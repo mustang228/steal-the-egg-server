@@ -50,7 +50,8 @@ def init_database():
             task_taps INTEGER DEFAULT 0,
             task_games INTEGER DEFAULT 0,
             task_eggs INTEGER DEFAULT 0,
-            boss_damage INTEGER DEFAULT 0
+            boss_damage INTEGER DEFAULT 0,
+            avatar TEXT DEFAULT '🥚'
         )
     """)
 
@@ -124,7 +125,8 @@ def init_database():
         "task_taps": "INTEGER DEFAULT 0",
         "task_games": "INTEGER DEFAULT 0",
         "task_eggs": "INTEGER DEFAULT 0",
-        "boss_damage": "INTEGER DEFAULT 0"
+        "boss_damage": "INTEGER DEFAULT 0",
+        "avatar": "TEXT DEFAULT '🥚'"
     }
 
     for column, definition in required_columns.items():
@@ -213,6 +215,27 @@ def ensure_player(user_id, username=""):
             user_id
         ))
 
+    conn.commit()
+    conn.close()
+
+
+def get_avatar(user_id):
+
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute("SELECT avatar FROM players WHERE user_id = ?", (user_id,))
+    result = cur.fetchone()
+    conn.close()
+    if result is None or not result["avatar"]:
+        return "🥚"
+    return result["avatar"]
+
+
+def set_avatar(user_id, avatar):
+
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute("UPDATE players SET avatar = ? WHERE user_id = ?", (avatar, user_id))
     conn.commit()
     conn.close()
 
@@ -1413,7 +1436,8 @@ def get_top_players(limit=10):
             tap_coins,
             egg_coins,
             xp,
-            level
+            level,
+            avatar
         FROM players
         WHERE blocked = 0
         ORDER BY egg_coins DESC,
@@ -1437,7 +1461,8 @@ def get_top_players(limit=10):
             "tap_coins": int(row["tap_coins"] or 0),
             "egg_coins": int(row["egg_coins"] or 0),
             "xp": int(row["xp"] or 0),
-            "level": int(row["level"] or 1)
+            "level": int(row["level"] or 1),
+            "avatar": row["avatar"] or "🥚"
         })
 
     return result
