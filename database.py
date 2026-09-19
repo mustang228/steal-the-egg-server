@@ -1,38 +1,30 @@
 import sqlite3
-import os
+from pathlib import Path
 from datetime import date
 
 
-# ============================================================
-# НАСТРОЙКИ
-# ============================================================
-
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DATABASE_NAME = os.path.join(BASE_DIR, "players.db")
+DB_PATH = Path(__file__).resolve().parent / "players.db"
 
 
-# ============================================================
-# ПОДКЛЮЧЕНИЕ
-# ============================================================
-
-def connect():
-    return sqlite3.connect(DATABASE_NAME)
+def get_connection():
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    return conn
 
 
-# ============================================================
-# СОЗДАНИЕ БАЗЫ
-# ============================================================
+# =========================================================
+# DATABASE INIT
+# =========================================================
 
 def init_database():
+    conn = get_connection()
+    cur = conn.cursor()
 
-    connection = connect()
-    cursor = connection.cursor()
+    # -----------------------------------------------------
+    # PLAYERS
+    # -----------------------------------------------------
 
-    # --------------------------------------------------------
-    # ИГРОКИ
-    # --------------------------------------------------------
-
-    cursor.execute("""
+    cur.execute("""
         CREATE TABLE IF NOT EXISTS players (
             user_id INTEGER PRIMARY KEY,
             tap_coins INTEGER DEFAULT 0,
@@ -57,54 +49,73 @@ def init_database():
         )
     """)
 
-    # --------------------------------------------------------
-    # ЯЙЦА
-    # --------------------------------------------------------
+    # -----------------------------------------------------
+    # EGGS
+    # -----------------------------------------------------
 
-    cursor.execute("""
+    cur.execute("""
         CREATE TABLE IF NOT EXISTS player_eggs (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
             user_id INTEGER,
-            egg_id INTEGER
+            egg_id INTEGER,
+            count INTEGER DEFAULT 0,
+
+            PRIMARY KEY (user_id, egg_id)
         )
     """)
 
-    # --------------------------------------------------------
-    # ПРЕДМЕТЫ
-    # --------------------------------------------------------
+    # -----------------------------------------------------
+    # ITEMS
+    # -----------------------------------------------------
 
-    cursor.execute("""
+    cur.execute("""
         CREATE TABLE IF NOT EXISTS player_items (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
             user_id INTEGER,
-            item_id INTEGER
+            item_id INTEGER,
+            count INTEGER DEFAULT 0,
+
+            PRIMARY KEY (user_id, item_id)
         )
     """)
 
-    # --------------------------------------------------------
-    # ДОСТИЖЕНИЯ
-    # --------------------------------------------------------
+    # -----------------------------------------------------
+    # ACHIEVEMENTS
+    # -----------------------------------------------------
 
-    cursor.execute("""
+    cur.execute("""
         CREATE TABLE IF NOT EXISTS achievements (
             user_id INTEGER,
             achievement_id INTEGER,
+
             PRIMARY KEY (user_id, achievement_id)
         )
     """)
 
-    # --------------------------------------------------------
-    # ПРОВЕРКА СТАРОЙ БАЗЫ
-    # --------------------------------------------------------
+    # -----------------------------------------------------
+    # DAILY TASK CLAIMS
+    # -----------------------------------------------------
 
-    cursor.execute("PRAGMA table_info(players)")
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS daily_task_claims (
+            user_id INTEGER,
+            task_date TEXT,
+            task_id TEXT,
 
-    columns = [
-        column[1]
-        for column in cursor.fetchall()
-    ]
+            PRIMARY KEY (user_id, task_date, task_id)
+        )
+    """)
 
-    new_columns = {
+    conn.commit()
+
+    # -----------------------------------------------------
+    # ADD MISSING COLUMNS
+    # -----------------------------------------------------
+
+    cur.execute("PRAGMA table_info(players)")
+    columns = [row["name"] for row in cur.fetchall()]
+
+    required_columns = {
+        "tap_coins": "INTEGER DEFAULT 0",
+        "egg_coins": "INTEGER DEFAULT 0",
         "username": "TEXT DEFAULT ''",
         "blocked": "INTEGER DEFAULT 0",
         "xp": "INTEGER DEFAULT 0",
@@ -119,1043 +130,896 @@ def init_database():
         "boss_damage": "INTEGER DEFAULT 0"
     }
 
-    for column_name, column_type in new_columns.items():
-
-        if column_name not in columns:
-
-            cursor.execute(
-                f"""
-                ALTER TABLE players
-                ADD COLUMN {column_name} {column_type}
-                """
+    for column, definition in required_columns.items():
+        if column not in columns:
+            cur.execute(
+                f"ALTER TABLE players ADD COLUMN {column} {definition}"
             )
 
-    connection.commit()
-    connection.close()
+    conn.commit()
+    conn.close()
 
 
-# ============================================================
-# ИГРОК
-# ============================================================
-
-def create_player(user_id, username=""):
-
-    connection = connect()
-    cursor = connection.cursor()
-
-    cursor.execute(
-        """
-        INSERT OR IGNORE INTO players
-        (
-            user_id,
-            tap_coins,
-            egg_coins,
-            username,
-            blocked,
-            xp,
-            level,
-            login_streak,
-            last_login,
-            daily_bonus_date,
-            task_date,
-            task_taps,
-            task_games,
-            task_eggs,
-            boss_damage
-        )
-        VALUES (?, 0, 0, ?, 0, 0, 1, 0, '', '', '', 0, 0, 0, 0)
-        """,
-        (user_id, username)
-    )
-
-    if username:
-
-        cursor.execute(
-            """
-            UPDATE players
-            SET username = ?
-            WHERE user_id = ?
-            """,
-            (username, user_id)
-        )
-
-    connection.commit()
-    connection.close()
-
+# =========================================================
+# PLAYER
+# =========================================================
 
 def ensure_player(user_id, username=""):
+    conn = get_connection()
+    cur = conn.cursor()
 
-    create_player(
-        user_id,
-        username
-    )
-
-
-def update_username(user_id, username):
-
-    if not username:
-        return
-
-    connection = connect()
-    cursor = connection.cursor()
-
-    cursor.execute(
-        """
-        UPDATE players
-        SET username = ?
-        WHERE user_id = ?
-        """,
-        (username, user_id)
-    )
-
-    connection.commit()
-    connection.close()
-
-
-# ============================================================
-# БАЛАНС
-# ============================================================
-
-def get_balance(user_id):
-
-    connection = connect()
-    cursor = connection.cursor()
-
-    cursor.execute(
-        """
-        SELECT tap_coins, egg_coins
-        FROM players
-        WHERE user_id = ?
-        """,
+    cur.execute(
+        "SELECT user_id FROM players WHERE user_id = ?",
         (user_id,)
     )
 
-    result = cursor.fetchone()
+    player = cur.fetchone()
 
-    connection.close()
+    if player is None:
+        cur.execute("""
+            INSERT INTO players (
+                user_id,
+                username
+            )
+            VALUES (?, ?)
+        """, (user_id, username))
+    else:
+        cur.execute("""
+            UPDATE players
+            SET username = ?
+            WHERE user_id = ?
+        """, (username, user_id))
+
+    conn.commit()
+    conn.close()
+
+
+def get_player(user_id):
+    conn = get_connection()
+    cur = conn.cursor()
+
+    cur.execute("""
+        SELECT *
+        FROM players
+        WHERE user_id = ?
+    """, (user_id,))
+
+    result = cur.fetchone()
+
+    conn.close()
 
     if result is None:
+        return None
 
-        create_player(user_id)
+    return dict(result)
 
+
+# =========================================================
+# BALANCE
+# =========================================================
+
+def get_balance(user_id):
+    conn = get_connection()
+    cur = conn.cursor()
+
+    cur.execute("""
+        SELECT tap_coins, egg_coins
+        FROM players
+        WHERE user_id = ?
+    """, (user_id,))
+
+    result = cur.fetchone()
+    conn.close()
+
+    if result is None:
         return 0, 0
 
-    return result[0], result[1]
+    return result["tap_coins"], result["egg_coins"]
 
 
 def add_tap_coins(user_id, amount):
+    conn = get_connection()
+    cur = conn.cursor()
 
-    connection = connect()
-    cursor = connection.cursor()
-
-    cursor.execute(
-        """
+    cur.execute("""
         UPDATE players
         SET tap_coins = tap_coins + ?
         WHERE user_id = ?
-        """,
-        (amount, user_id)
-    )
+    """, (amount, user_id))
 
-    connection.commit()
-    connection.close()
+    conn.commit()
+    conn.close()
 
 
 def remove_tap_coins(user_id, amount):
+    conn = get_connection()
+    cur = conn.cursor()
 
-    connection = connect()
-    cursor = connection.cursor()
-
-    cursor.execute(
-        """
+    cur.execute("""
         UPDATE players
         SET tap_coins = tap_coins - ?
         WHERE user_id = ?
         AND tap_coins >= ?
-        """,
-        (amount, user_id, amount)
-    )
+    """, (amount, user_id, amount))
 
-    changed = cursor.rowcount
+    success = cur.rowcount > 0
 
-    connection.commit()
-    connection.close()
+    conn.commit()
+    conn.close()
 
-    return changed > 0
+    return success
 
 
 def add_egg_coins(user_id, amount):
+    conn = get_connection()
+    cur = conn.cursor()
 
-    connection = connect()
-    cursor = connection.cursor()
-
-    cursor.execute(
-        """
+    cur.execute("""
         UPDATE players
         SET egg_coins = egg_coins + ?
         WHERE user_id = ?
-        """,
-        (amount, user_id)
-    )
+    """, (amount, user_id))
 
-    connection.commit()
-    connection.close()
+    conn.commit()
+    conn.close()
 
 
 def remove_egg_coins(user_id, amount):
+    conn = get_connection()
+    cur = conn.cursor()
 
-    connection = connect()
-    cursor = connection.cursor()
-
-    cursor.execute(
-        """
+    cur.execute("""
         UPDATE players
         SET egg_coins = egg_coins - ?
         WHERE user_id = ?
         AND egg_coins >= ?
-        """,
-        (amount, user_id, amount)
-    )
+    """, (amount, user_id, amount))
 
-    changed = cursor.rowcount
+    success = cur.rowcount > 0
 
-    connection.commit()
-    connection.close()
+    conn.commit()
+    conn.close()
 
-    return changed > 0
+    return success
 
 
-# ============================================================
-# ЯЙЦА
-# ============================================================
+# =========================================================
+# EGGS
+# =========================================================
 
 def add_egg(user_id, egg_id):
+    conn = get_connection()
+    cur = conn.cursor()
 
-    connection = connect()
-    cursor = connection.cursor()
+    cur.execute("""
+        INSERT INTO player_eggs (
+            user_id,
+            egg_id,
+            count
+        )
+        VALUES (?, ?, 1)
 
-    cursor.execute(
-        """
-        INSERT INTO player_eggs
-        (user_id, egg_id)
-        VALUES (?, ?)
-        """,
-        (user_id, egg_id)
-    )
+        ON CONFLICT(user_id, egg_id)
+        DO UPDATE SET count = count + 1
+    """, (user_id, egg_id))
 
-    connection.commit()
-    connection.close()
+    conn.commit()
+    conn.close()
 
 
 def get_player_eggs(user_id):
+    conn = get_connection()
+    cur = conn.cursor()
 
-    connection = connect()
-    cursor = connection.cursor()
-
-    cursor.execute(
-        """
-        SELECT egg_id
+    cur.execute("""
+        SELECT egg_id, count
         FROM player_eggs
         WHERE user_id = ?
-        """,
-        (user_id,)
-    )
+        AND count > 0
+        ORDER BY egg_id
+    """, (user_id,))
 
-    eggs = cursor.fetchall()
-
-    connection.close()
-
-    return [
-        egg[0]
-        for egg in eggs
+    result = [
+        {
+            "egg_id": row["egg_id"],
+            "count": row["count"]
+        }
+        for row in cur.fetchall()
     ]
 
+    conn.close()
 
-def remove_one_egg(user_id, egg_id):
-
-    connection = connect()
-    cursor = connection.cursor()
-
-    cursor.execute(
-        """
-        SELECT id
-        FROM player_eggs
-        WHERE user_id = ?
-        AND egg_id = ?
-        LIMIT 1
-        """,
-        (user_id, egg_id)
-    )
-
-    result = cursor.fetchone()
-
-    if result is None:
-
-        connection.close()
-
-        return False
-
-    egg_database_id = result[0]
-
-    cursor.execute(
-        """
-        DELETE FROM player_eggs
-        WHERE id = ?
-        """,
-        (egg_database_id,)
-    )
-
-    connection.commit()
-    connection.close()
-
-    return True
+    return result
 
 
 def get_egg_count(user_id, egg_id):
+    conn = get_connection()
+    cur = conn.cursor()
 
-    connection = connect()
-    cursor = connection.cursor()
-
-    cursor.execute(
-        """
-        SELECT COUNT(*)
+    cur.execute("""
+        SELECT count
         FROM player_eggs
         WHERE user_id = ?
         AND egg_id = ?
-        """,
-        (user_id, egg_id)
-    )
+    """, (user_id, egg_id))
 
-    result = cursor.fetchone()
+    result = cur.fetchone()
 
-    connection.close()
+    conn.close()
 
-    return result[0]
+    if result is None:
+        return 0
+
+    return result["count"]
 
 
-# ============================================================
-# XP / УРОВЕНЬ
-# ============================================================
+def remove_one_egg(user_id, egg_id):
+    conn = get_connection()
+    cur = conn.cursor()
+
+    cur.execute("""
+        UPDATE player_eggs
+        SET count = count - 1
+        WHERE user_id = ?
+        AND egg_id = ?
+        AND count > 0
+    """, (user_id, egg_id))
+
+    success = cur.rowcount > 0
+
+    conn.commit()
+    conn.close()
+
+    return success
+
+
+def get_total_eggs(user_id):
+    conn = get_connection()
+    cur = conn.cursor()
+
+    cur.execute("""
+        SELECT COALESCE(SUM(count), 0) AS total
+        FROM player_eggs
+        WHERE user_id = ?
+    """, (user_id,))
+
+    result = cur.fetchone()
+
+    conn.close()
+
+    return result["total"]
+
+
+# =========================================================
+# XP / LEVEL
+# =========================================================
 
 def get_progress(user_id):
+    conn = get_connection()
+    cur = conn.cursor()
 
-    connection = connect()
-    cursor = connection.cursor()
-
-    cursor.execute(
-        """
+    cur.execute("""
         SELECT xp, level
         FROM players
         WHERE user_id = ?
-        """,
-        (user_id,)
-    )
+    """, (user_id,))
 
-    result = cursor.fetchone()
+    result = cur.fetchone()
 
-    connection.close()
+    conn.close()
 
     if result is None:
-
-        create_player(user_id)
-
         return 0, 1
 
-    return result[0], result[1]
+    return result["xp"], result["level"]
 
 
 def add_xp(user_id, amount):
+    conn = get_connection()
+    cur = conn.cursor()
 
-    connection = connect()
-    cursor = connection.cursor()
-
-    cursor.execute(
-        """
-        UPDATE players
-        SET xp = xp + ?
-        WHERE user_id = ?
-        """,
-        (amount, user_id)
-    )
-
-    cursor.execute(
-        """
+    cur.execute("""
         SELECT xp, level
         FROM players
         WHERE user_id = ?
-        """,
-        (user_id,)
-    )
+    """, (user_id,))
 
-    result = cursor.fetchone()
+    result = cur.fetchone()
 
-    if result:
+    if result is None:
+        conn.close()
+        return 0, 1
 
-        xp = result[0]
-        level = result[1]
+    xp = result["xp"] + amount
+    level = result["level"]
 
-        required = level * 100
+    # Каждые 100 XP = новый уровень
+    new_level = (xp // 100) + 1
 
-        while xp >= required:
+    if new_level > level:
+        level = new_level
 
-            xp -= required
-            level += 1
+    cur.execute("""
+        UPDATE players
+        SET xp = ?,
+            level = ?
+        WHERE user_id = ?
+    """, (xp, level, user_id))
 
-            required = level * 100
+    conn.commit()
+    conn.close()
 
-        cursor.execute(
-            """
-            UPDATE players
-            SET xp = ?, level = ?
-            WHERE user_id = ?
-            """,
-            (xp, level, user_id)
-        )
-
-    connection.commit()
-    connection.close()
+    return xp, level
 
 
-# ============================================================
-# СЕРИЯ ВХОДОВ
-# ============================================================
+# =========================================================
+# LOGIN STREAK
+# =========================================================
 
 def get_login_info(user_id):
+    conn = get_connection()
+    cur = conn.cursor()
 
-    connection = connect()
-    cursor = connection.cursor()
-
-    cursor.execute(
-        """
+    cur.execute("""
         SELECT login_streak, last_login
         FROM players
         WHERE user_id = ?
-        """,
-        (user_id,)
-    )
+    """, (user_id,))
 
-    result = cursor.fetchone()
+    result = cur.fetchone()
 
-    connection.close()
+    conn.close()
 
     if result is None:
-
         return 0, ""
 
-    return result[0], result[1]
+    return result["login_streak"], result["last_login"]
 
 
 def update_login(user_id):
+    today = date.today().isoformat()
 
-    today = date.today()
+    conn = get_connection()
+    cur = conn.cursor()
 
-    today_string = today.isoformat()
-
-    connection = connect()
-    cursor = connection.cursor()
-
-    cursor.execute(
-        """
+    cur.execute("""
         SELECT login_streak, last_login
         FROM players
         WHERE user_id = ?
-        """,
-        (user_id,)
-    )
+    """, (user_id,))
 
-    result = cursor.fetchone()
+    result = cur.fetchone()
 
     if result is None:
+        conn.close()
+        return {
+            "claimed": False,
+            "streak": 0,
+            "reward": 0
+        }
 
-        connection.close()
+    streak = result["login_streak"] or 0
+    last_login = result["last_login"] or ""
 
-        create_player(user_id)
+    if last_login == today:
+        conn.close()
 
-        return 1
-
-    streak = result[0]
-    last_login = result[1]
-
-    if last_login == today_string:
-
-        connection.close()
-
-        return streak
+        return {
+            "claimed": False,
+            "streak": streak,
+            "reward": 0
+        }
 
     if last_login:
-
         try:
+            old_date = date.fromisoformat(last_login)
+            today_date = date.fromisoformat(today)
 
-            previous = date.fromisoformat(
-                last_login
-            )
+            difference = (today_date - old_date).days
 
-            difference = (
-                today - previous
-            ).days
+            if difference == 1:
+                streak += 1
+            else:
+                streak = 1
 
-        except ValueError:
-
-            difference = 999
-
+        except Exception:
+            streak = 1
     else:
-
-        difference = 999
-
-    if difference == 1:
-
-        streak += 1
-
-    else:
-
         streak = 1
 
-    cursor.execute(
-        """
+    # Награда за вход
+    reward = 5 + min(streak, 7) * 2
+
+    cur.execute("""
         UPDATE players
         SET login_streak = ?,
             last_login = ?
         WHERE user_id = ?
-        """,
-        (
-            streak,
-            today_string,
-            user_id
-        )
-    )
+    """, (streak, today, user_id))
 
-    connection.commit()
-    connection.close()
+    conn.commit()
+    conn.close()
 
-    return streak
+    return {
+        "claimed": True,
+        "streak": streak,
+        "reward": reward
+    }
 
 
-# ============================================================
-# ЕЖЕДНЕВНЫЙ БОНУС
-# ============================================================
+# =========================================================
+# DAILY BONUS
+# =========================================================
 
 def get_daily_bonus_date(user_id):
+    conn = get_connection()
+    cur = conn.cursor()
 
-    connection = connect()
-    cursor = connection.cursor()
-
-    cursor.execute(
-        """
+    cur.execute("""
         SELECT daily_bonus_date
         FROM players
         WHERE user_id = ?
-        """,
-        (user_id,)
-    )
+    """, (user_id,))
 
-    result = cursor.fetchone()
+    result = cur.fetchone()
 
-    connection.close()
+    conn.close()
 
     if result is None:
         return ""
 
-    return result[0]
+    return result["daily_bonus_date"] or ""
 
 
 def set_daily_bonus_date(user_id):
-
     today = date.today().isoformat()
 
-    connection = connect()
-    cursor = connection.cursor()
+    conn = get_connection()
+    cur = conn.cursor()
 
-    cursor.execute(
-        """
+    cur.execute("""
         UPDATE players
         SET daily_bonus_date = ?
         WHERE user_id = ?
-        """,
-        (today, user_id)
-    )
+    """, (today, user_id))
 
-    connection.commit()
-    connection.close()
+    conn.commit()
+    conn.close()
 
 
-# ============================================================
-# ЕЖЕДНЕВНЫЕ ЗАДАНИЯ
-# ============================================================
+# =========================================================
+# DAILY TASKS
+# =========================================================
 
 def get_daily_tasks(user_id):
-
     today = date.today().isoformat()
 
-    connection = connect()
-    cursor = connection.cursor()
+    conn = get_connection()
+    cur = conn.cursor()
 
-    cursor.execute(
-        """
-        SELECT task_date, task_taps, task_games, task_eggs
+    cur.execute("""
+        SELECT
+            task_date,
+            task_taps,
+            task_games,
+            task_eggs
         FROM players
         WHERE user_id = ?
-        """,
-        (user_id,)
-    )
+    """, (user_id,))
 
-    result = cursor.fetchone()
+    result = cur.fetchone()
 
     if result is None:
-
-        connection.close()
-
+        conn.close()
         return 0, 0, 0
 
-    task_date = result[0]
-
-    if task_date != today:
-
-        cursor.execute(
-            """
+    if result["task_date"] != today:
+        cur.execute("""
             UPDATE players
             SET task_date = ?,
                 task_taps = 0,
                 task_games = 0,
                 task_eggs = 0
             WHERE user_id = ?
-            """,
-            (today, user_id)
-        )
+        """, (today, user_id))
 
-        connection.commit()
+        conn.commit()
 
-        connection.close()
+        taps = 0
+        games = 0
+        eggs = 0
+    else:
+        taps = result["task_taps"]
+        games = result["task_games"]
+        eggs = result["task_eggs"]
 
-        return 0, 0, 0
+    conn.close()
 
-    connection.close()
-
-    return result[1], result[2], result[3]
+    return taps, games, eggs
 
 
-def add_task_tap(user_id):
+def add_task_tap(user_id, amount=1):
+    get_daily_tasks(user_id)
 
-    connection = connect()
-    cursor = connection.cursor()
+    conn = get_connection()
+    cur = conn.cursor()
 
-    cursor.execute(
-        """
+    cur.execute("""
         UPDATE players
-        SET task_taps = task_taps + 1
+        SET task_taps = task_taps + ?
         WHERE user_id = ?
-        """,
-        (user_id,)
-    )
+    """, (amount, user_id))
 
-    connection.commit()
-    connection.close()
+    conn.commit()
+    conn.close()
 
 
-def add_task_game(user_id):
+def add_task_game(user_id, amount=1):
+    get_daily_tasks(user_id)
 
-    connection = connect()
-    cursor = connection.cursor()
+    conn = get_connection()
+    cur = conn.cursor()
 
-    cursor.execute(
-        """
+    cur.execute("""
         UPDATE players
-        SET task_games = task_games + 1
+        SET task_games = task_games + ?
         WHERE user_id = ?
-        """,
-        (user_id,)
-    )
+    """, (amount, user_id))
 
-    connection.commit()
-    connection.close()
+    conn.commit()
+    conn.close()
 
 
-def add_task_egg(user_id):
+def add_task_egg(user_id, amount=1):
+    get_daily_tasks(user_id)
 
-    connection = connect()
-    cursor = connection.cursor()
+    conn = get_connection()
+    cur = conn.cursor()
 
-    cursor.execute(
-        """
+    cur.execute("""
         UPDATE players
-        SET task_eggs = task_eggs + 1
+        SET task_eggs = task_eggs + ?
         WHERE user_id = ?
-        """,
-        (user_id,)
-    )
+    """, (amount, user_id))
 
-    connection.commit()
-    connection.close()
+    conn.commit()
+    conn.close()
 
 
-# ============================================================
-# ДОСТИЖЕНИЯ
-# ============================================================
+def has_daily_task_claim(user_id, task_id):
+    today = date.today().isoformat()
+
+    conn = get_connection()
+    cur = conn.cursor()
+
+    cur.execute("""
+        SELECT 1
+        FROM daily_task_claims
+        WHERE user_id = ?
+        AND task_date = ?
+        AND task_id = ?
+    """, (user_id, today, task_id))
+
+    result = cur.fetchone()
+
+    conn.close()
+
+    return result is not None
+
+
+def add_daily_task_claim(user_id, task_id):
+    today = date.today().isoformat()
+
+    conn = get_connection()
+    cur = conn.cursor()
+
+    try:
+        cur.execute("""
+            INSERT INTO daily_task_claims (
+                user_id,
+                task_date,
+                task_id
+            )
+            VALUES (?, ?, ?)
+        """, (user_id, today, task_id))
+
+        success = True
+
+    except sqlite3.IntegrityError:
+        success = False
+
+    conn.commit()
+    conn.close()
+
+    return success
+
+
+# =========================================================
+# ACHIEVEMENTS
+# =========================================================
 
 def has_achievement(user_id, achievement_id):
+    conn = get_connection()
+    cur = conn.cursor()
 
-    connection = connect()
-    cursor = connection.cursor()
-
-    cursor.execute(
-        """
+    cur.execute("""
         SELECT 1
         FROM achievements
         WHERE user_id = ?
         AND achievement_id = ?
-        """,
-        (user_id, achievement_id)
-    )
+    """, (user_id, achievement_id))
 
-    result = cursor.fetchone()
+    result = cur.fetchone()
 
-    connection.close()
+    conn.close()
 
     return result is not None
 
 
 def add_achievement(user_id, achievement_id):
+    conn = get_connection()
+    cur = conn.cursor()
 
-    connection = connect()
-    cursor = connection.cursor()
-
-    cursor.execute(
-        """
-        INSERT OR IGNORE INTO achievements
-        (user_id, achievement_id)
+    cur.execute("""
+        INSERT OR IGNORE INTO achievements (
+            user_id,
+            achievement_id
+        )
         VALUES (?, ?)
-        """,
-        (user_id, achievement_id)
-    )
+    """, (user_id, achievement_id))
 
-    connection.commit()
-    connection.close()
+    conn.commit()
+    conn.close()
 
 
 def get_achievements(user_id):
+    conn = get_connection()
+    cur = conn.cursor()
 
-    connection = connect()
-    cursor = connection.cursor()
-
-    cursor.execute(
-        """
+    cur.execute("""
         SELECT achievement_id
         FROM achievements
         WHERE user_id = ?
-        """,
-        (user_id,)
-    )
+        ORDER BY achievement_id
+    """, (user_id,))
 
-    result = cursor.fetchall()
-
-    connection.close()
-
-    return [
-        row[0]
-        for row in result
+    result = [
+        row["achievement_id"]
+        for row in cur.fetchall()
     ]
 
-
-# ============================================================
-# ПРЕДМЕТЫ
-# ============================================================
-
-def add_item(user_id, item_id):
-
-    connection = connect()
-    cursor = connection.cursor()
-
-    cursor.execute(
-        """
-        INSERT INTO player_items
-        (user_id, item_id)
-        VALUES (?, ?)
-        """,
-        (user_id, item_id)
-    )
-
-    connection.commit()
-    connection.close()
-
-
-def get_item_count(user_id, item_id):
-
-    connection = connect()
-    cursor = connection.cursor()
-
-    cursor.execute(
-        """
-        SELECT COUNT(*)
-        FROM player_items
-        WHERE user_id = ?
-        AND item_id = ?
-        """,
-        (user_id, item_id)
-    )
-
-    result = cursor.fetchone()
-
-    connection.close()
-
-    return result[0]
-
-
-def remove_item(user_id, item_id):
-
-    connection = connect()
-    cursor = connection.cursor()
-
-    cursor.execute(
-        """
-        SELECT id
-        FROM player_items
-        WHERE user_id = ?
-        AND item_id = ?
-        LIMIT 1
-        """,
-        (user_id, item_id)
-    )
-
-    result = cursor.fetchone()
-
-    if result is None:
-
-        connection.close()
-
-        return False
-
-    cursor.execute(
-        """
-        DELETE FROM player_items
-        WHERE id = ?
-        """,
-        (result[0],)
-    )
-
-    connection.commit()
-    connection.close()
-
-    return True
-
-
-# ============================================================
-# БОСС
-# ============================================================
-
-def get_boss_damage(user_id):
-
-    connection = connect()
-    cursor = connection.cursor()
-
-    cursor.execute(
-        """
-        SELECT boss_damage
-        FROM players
-        WHERE user_id = ?
-        """,
-        (user_id,)
-    )
-
-    result = cursor.fetchone()
-
-    connection.close()
-
-    if result is None:
-        return 0
-
-    return result[0]
-
-
-def add_boss_damage(user_id, amount):
-
-    connection = connect()
-    cursor = connection.cursor()
-
-    cursor.execute(
-        """
-        UPDATE players
-        SET boss_damage = boss_damage + ?
-        WHERE user_id = ?
-        """,
-        (amount, user_id)
-    )
-
-    connection.commit()
-    connection.close()
-
-
-# ============================================================
-# ПАНЕЛЬ УПРАВЛЕНИЯ
-# ============================================================
-
-def get_all_players():
-
-    connection = connect()
-    cursor = connection.cursor()
-
-    cursor.execute(
-        """
-        SELECT user_id, username, blocked
-        FROM players
-        ORDER BY user_id
-        """
-    )
-
-    players = cursor.fetchall()
-
-    connection.close()
-
-    return players
-
-
-def get_player(user_id):
-
-    connection = connect()
-    cursor = connection.cursor()
-
-    cursor.execute(
-        """
-        SELECT
-            user_id,
-            username,
-            blocked,
-            tap_coins,
-            egg_coins,
-            xp,
-            level,
-            login_streak
-        FROM players
-        WHERE user_id = ?
-        """,
-        (user_id,)
-    )
-
-    player = cursor.fetchone()
-
-    connection.close()
-
-    return player
-
-
-def block_player(user_id):
-
-    connection = connect()
-    cursor = connection.cursor()
-
-    cursor.execute(
-        """
-        UPDATE players
-        SET blocked = 1
-        WHERE user_id = ?
-        """,
-        (user_id,)
-    )
-
-    connection.commit()
-    connection.close()
-
-
-def unblock_player(user_id):
-
-    connection = connect()
-    cursor = connection.cursor()
-
-    cursor.execute(
-        """
-        UPDATE players
-        SET blocked = 0
-        WHERE user_id = ?
-        """,
-        (user_id,)
-    )
-
-    connection.commit()
-    connection.close()
-
-
-def is_blocked(user_id):
-
-    connection = connect()
-    cursor = connection.cursor()
-
-    cursor.execute(
-        """
-        SELECT blocked
-        FROM players
-        WHERE user_id = ?
-        """,
-        (user_id,)
-    )
-
-    result = cursor.fetchone()
-
-    connection.close()
-
-    if result is None:
-        return False
-
-    return result[0] == 1
-
-
-# ============================================================
-# ЛИДЕРЫ
-# ============================================================
-
-def get_top_players(limit=10):
-
-    connection = connect()
-    cursor = connection.cursor()
-
-    cursor.execute(
-        """
-        SELECT user_id, username, egg_coins, tap_coins, level
-        FROM players
-        ORDER BY egg_coins DESC
-        LIMIT ?
-        """,
-        (limit,)
-    )
-
-    result = cursor.fetchall()
-
-    connection.close()
+    conn.close()
 
     return result
 
 
-# ============================================================
-# КОЛИЧЕСТВО ЯИЦ
-# ============================================================
+# =========================================================
+# ITEMS
+# =========================================================
 
-def get_total_eggs(user_id):
+def add_item(user_id, item_id):
+    conn = get_connection()
+    cur = conn.cursor()
 
-    connection = connect()
-    cursor = connection.cursor()
+    cur.execute("""
+        INSERT INTO player_items (
+            user_id,
+            item_id,
+            count
+        )
+        VALUES (?, ?, 1)
 
-    cursor.execute(
-        """
-        SELECT COUNT(*)
-        FROM player_eggs
+        ON CONFLICT(user_id, item_id)
+        DO UPDATE SET count = count + 1
+    """, (user_id, item_id))
+
+    conn.commit()
+    conn.close()
+
+
+def get_item_count(user_id, item_id):
+    conn = get_connection()
+    cur = conn.cursor()
+
+    cur.execute("""
+        SELECT count
+        FROM player_items
         WHERE user_id = ?
-        """,
-        (user_id,)
-    )
+        AND item_id = ?
+    """, (user_id, item_id))
 
-    result = cursor.fetchone()
+    result = cur.fetchone()
 
-    connection.close()
+    conn.close()
 
-    return result[0]
+    if result is None:
+        return 0
+
+    return result["count"]
 
 
-# ============================================================
-# ЗАПУСК
-# ============================================================
+def get_items(user_id):
+    conn = get_connection()
+    cur = conn.cursor()
 
-if __name__ == "__main__":
+    cur.execute("""
+        SELECT item_id, count
+        FROM player_items
+        WHERE user_id = ?
+        AND count > 0
+        ORDER BY item_id
+    """, (user_id,))
 
-    init_database()
+    result = [
+        {
+            "item_id": row["item_id"],
+            "count": row["count"]
+        }
+        for row in cur.fetchall()
+    ]
 
-    print("✅ База данных готова.")
-    print(
-        f"📁 {DATABASE_NAME}"
-    )
+    conn.close()
+
+    return result
+
+
+def remove_item(user_id, item_id):
+    conn = get_connection()
+    cur = conn.cursor()
+
+    cur.execute("""
+        UPDATE player_items
+        SET count = count - 1
+        WHERE user_id = ?
+        AND item_id = ?
+        AND count > 0
+    """, (user_id, item_id))
+
+    success = cur.rowcount > 0
+
+    conn.commit()
+    conn.close()
+
+    return success
+
+
+# =========================================================
+# BOSS
+# =========================================================
+
+def get_boss_damage(user_id):
+    conn = get_connection()
+    cur = conn.cursor()
+
+    cur.execute("""
+        SELECT boss_damage
+        FROM players
+        WHERE user_id = ?
+    """, (user_id,))
+
+    result = cur.fetchone()
+
+    conn.close()
+
+    if result is None:
+        return 0
+
+    return result["boss_damage"]
+
+
+def add_boss_damage(user_id, amount):
+    conn = get_connection()
+    cur = conn.cursor()
+
+    cur.execute("""
+        UPDATE players
+        SET boss_damage = boss_damage + ?
+        WHERE user_id = ?
+    """, (amount, user_id))
+
+    conn.commit()
+    conn.close()
+
+
+# =========================================================
+# ADMIN
+# =========================================================
+
+def get_all_players():
+    conn = get_connection()
+    cur = conn.cursor()
+
+    cur.execute("""
+        SELECT *
+        FROM players
+        ORDER BY egg_coins DESC
+    """)
+
+    result = [
+        dict(row)
+        for row in cur.fetchall()
+    ]
+
+    conn.close()
+
+    return result
+
+
+def block_player(user_id):
+    conn = get_connection()
+    cur = conn.cursor()
+
+    cur.execute("""
+        UPDATE players
+        SET blocked = 1
+        WHERE user_id = ?
+    """, (user_id,))
+
+    conn.commit()
+    conn.close()
+
+
+def unblock_player(user_id):
+    conn = get_connection()
+    cur = conn.cursor()
+
+    cur.execute("""
+        UPDATE players
+        SET blocked = 0
+        WHERE user_id = ?
+    """, (user_id,))
+
+    conn.commit()
+    conn.close()
+
+
+def is_blocked(user_id):
+    conn = get_connection()
+    cur = conn.cursor()
+
+    cur.execute("""
+        SELECT blocked
+        FROM players
+        WHERE user_id = ?
+    """, (user_id,))
+
+    result = cur.fetchone()
+
+    conn.close()
+
+    if result is None:
+        return False
+
+    return bool(result["blocked"])
+
+
+# =========================================================
+# LEADERBOARD
+# =========================================================
+
+def get_top_players(limit=10):
+    conn = get_connection()
+    cur = conn.cursor()
+
+    cur.execute("""
+        SELECT
+            user_id,
+            username,
+            tap_coins,
+            egg_coins,
+            level,
+            xp
+        FROM players
+        WHERE blocked = 0
+        ORDER BY egg_coins DESC, xp DESC
+        LIMIT ?
+    """, (limit,))
+
+    result = [
+        dict(row)
+        for row in cur.fetchall()
+    ]
+
+    conn.close()
+
+    return result
