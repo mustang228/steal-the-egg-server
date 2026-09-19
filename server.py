@@ -23,6 +23,10 @@ app = Flask(__name__)
 CORS(app)
 
 BOT_TOKEN = os.getenv("BOT_TOKEN", "")
+
+print("BOT_TOKEN задан:", bool(BOT_TOKEN))
+print("Длина BOT_TOKEN:", len(BOT_TOKEN))
+
 PORT = int(os.getenv("PORT", "8080"))
 
 WITHDRAWAL_BOT = "https://t.me/stealtheegg_vyvod_bot"
