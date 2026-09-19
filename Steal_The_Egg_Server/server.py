@@ -4,7 +4,7 @@ from urllib.parse import parse_qsl
 from flask import Flask, request, jsonify, send_from_directory
 import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from Steal_The_Egg_Server import database
+import database
 
 app = Flask(__name__, static_folder=os.path.dirname(os.path.abspath(__file__)), static_url_path='')
 BOT_TOKEN = os.getenv('BOT_TOKEN', '')
