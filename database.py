@@ -3,17 +3,17 @@ from pathlib import Path
 from datetime import date
 
 
-# ============================================================
-# НАСТРОЙКИ
-# ============================================================
+# =========================================================
+# SETTINGS
+# =========================================================
 
 BASE_DIR = Path(__file__).resolve().parent
 DB_PATH = BASE_DIR / "players.db"
 
 
-# ============================================================
-# ПОДКЛЮЧЕНИЕ
-# ============================================================
+# =========================================================
+# CONNECTION
+# =========================================================
 
 def get_connection():
     conn = sqlite3.connect(DB_PATH)
@@ -21,17 +21,18 @@ def get_connection():
     return conn
 
 
-# ============================================================
-# ИНИЦИАЛИЗАЦИЯ БАЗЫ
-# ============================================================
+# =========================================================
+# DATABASE INIT
+# =========================================================
 
 def init_database():
+
     conn = get_connection()
     cur = conn.cursor()
 
-    # --------------------------------------------------------
+    # -----------------------------------------------------
     # PLAYERS
-    # --------------------------------------------------------
+    # -----------------------------------------------------
 
     cur.execute("""
         CREATE TABLE IF NOT EXISTS players (
@@ -40,32 +41,22 @@ def init_database():
             egg_coins INTEGER DEFAULT 0,
             username TEXT DEFAULT '',
             blocked INTEGER DEFAULT 0,
-
             xp INTEGER DEFAULT 0,
             level INTEGER DEFAULT 1,
-
             login_streak INTEGER DEFAULT 0,
             last_login TEXT DEFAULT '',
-
             daily_bonus_date TEXT DEFAULT '',
-
             task_date TEXT DEFAULT '',
             task_taps INTEGER DEFAULT 0,
             task_games INTEGER DEFAULT 0,
             task_eggs INTEGER DEFAULT 0,
-
-            boss_damage INTEGER DEFAULT 0,
-
-            total_taps INTEGER DEFAULT 0,
-            total_games INTEGER DEFAULT 0
+            boss_damage INTEGER DEFAULT 0
         )
     """)
 
-    # --------------------------------------------------------
-    # PLAYER EGGS
-    #
-    # Каждое яйцо = отдельная строка.
-    # --------------------------------------------------------
+    # -----------------------------------------------------
+    # EGGS
+    # -----------------------------------------------------
 
     cur.execute("""
         CREATE TABLE IF NOT EXISTS player_eggs (
@@ -75,9 +66,9 @@ def init_database():
         )
     """)
 
-    # --------------------------------------------------------
-    # PLAYER ITEMS
-    # --------------------------------------------------------
+    # -----------------------------------------------------
+    # ITEMS
+    # -----------------------------------------------------
 
     cur.execute("""
         CREATE TABLE IF NOT EXISTS player_items (
@@ -87,9 +78,9 @@ def init_database():
         )
     """)
 
-    # --------------------------------------------------------
+    # -----------------------------------------------------
     # ACHIEVEMENTS
-    # --------------------------------------------------------
+    # -----------------------------------------------------
 
     cur.execute("""
         CREATE TABLE IF NOT EXISTS achievements (
@@ -99,58 +90,41 @@ def init_database():
         )
     """)
 
-    # --------------------------------------------------------
+    # -----------------------------------------------------
     # DAILY TASK CLAIMS
-    # --------------------------------------------------------
+    # -----------------------------------------------------
 
     cur.execute("""
         CREATE TABLE IF NOT EXISTS daily_task_claims (
             user_id INTEGER NOT NULL,
             task_date TEXT NOT NULL,
             task_id TEXT NOT NULL,
-
-            PRIMARY KEY (
-                user_id,
-                task_date,
-                task_id
-            )
+            PRIMARY KEY (user_id, task_date, task_id)
         )
     """)
 
-    # --------------------------------------------------------
-    # МИГРАЦИЯ PLAYERS
-    # --------------------------------------------------------
+    # -----------------------------------------------------
+    # MIGRATE PLAYERS
+    # -----------------------------------------------------
 
     cur.execute("PRAGMA table_info(players)")
-
-    columns = {
-        row["name"]
-        for row in cur.fetchall()
-    }
+    columns = [row["name"] for row in cur.fetchall()]
 
     required_columns = {
         "tap_coins": "INTEGER DEFAULT 0",
         "egg_coins": "INTEGER DEFAULT 0",
         "username": "TEXT DEFAULT ''",
         "blocked": "INTEGER DEFAULT 0",
-
         "xp": "INTEGER DEFAULT 0",
         "level": "INTEGER DEFAULT 1",
-
         "login_streak": "INTEGER DEFAULT 0",
         "last_login": "TEXT DEFAULT ''",
-
         "daily_bonus_date": "TEXT DEFAULT ''",
-
         "task_date": "TEXT DEFAULT ''",
         "task_taps": "INTEGER DEFAULT 0",
         "task_games": "INTEGER DEFAULT 0",
         "task_eggs": "INTEGER DEFAULT 0",
-
-        "boss_damage": "INTEGER DEFAULT 0",
-
-        "total_taps": "INTEGER DEFAULT 0",
-        "total_games": "INTEGER DEFAULT 0"
+        "boss_damage": "INTEGER DEFAULT 0"
     }
 
     for column, definition in required_columns.items():
@@ -158,19 +132,16 @@ def init_database():
         if column not in columns:
 
             cur.execute(
-                f"""
-                ALTER TABLE players
-                ADD COLUMN {column} {definition}
-                """
+                f"ALTER TABLE players ADD COLUMN {column} {definition}"
             )
 
     conn.commit()
     conn.close()
 
 
-# ============================================================
-# СОЗДАНИЕ ИГРОКА
-# ============================================================
+# =========================================================
+# PLAYER
+# =========================================================
 
 def create_player(user_id, username=""):
 
@@ -203,27 +174,35 @@ def create_player(user_id, username=""):
     conn.close()
 
 
-# ============================================================
-# ENSURE PLAYER
-# ============================================================
-
 def ensure_player(user_id, username=""):
 
     conn = get_connection()
     cur = conn.cursor()
 
     cur.execute("""
-        INSERT OR IGNORE INTO players (
-            user_id,
-            username
-        )
-        VALUES (?, ?)
+        SELECT user_id
+        FROM players
+        WHERE user_id = ?
     """, (
         user_id,
-        username
     ))
 
-    if username:
+    result = cur.fetchone()
+
+    if result is None:
+
+        cur.execute("""
+            INSERT INTO players (
+                user_id,
+                username
+            )
+            VALUES (?, ?)
+        """, (
+            user_id,
+            username
+        ))
+
+    elif username:
 
         cur.execute("""
             UPDATE players
@@ -237,10 +216,6 @@ def ensure_player(user_id, username=""):
     conn.commit()
     conn.close()
 
-
-# ============================================================
-# ПОЛУЧЕНИЕ ИГРОКА
-# ============================================================
 
 def get_player(user_id):
 
@@ -265,10 +240,6 @@ def get_player(user_id):
     return dict(result)
 
 
-# ============================================================
-# USERNAME
-# ============================================================
-
 def update_username(user_id, username):
 
     conn = get_connection()
@@ -287,9 +258,9 @@ def update_username(user_id, username):
     conn.close()
 
 
-# ============================================================
+# =========================================================
 # BALANCE
-# ============================================================
+# =========================================================
 
 def get_balance(user_id):
 
@@ -297,9 +268,7 @@ def get_balance(user_id):
     cur = conn.cursor()
 
     cur.execute("""
-        SELECT
-            tap_coins,
-            egg_coins
+        SELECT tap_coins, egg_coins
         FROM players
         WHERE user_id = ?
     """, (
@@ -319,10 +288,6 @@ def get_balance(user_id):
     )
 
 
-# ============================================================
-# TAP COINS
-# ============================================================
-
 def add_tap_coins(user_id, amount):
 
     conn = get_connection()
@@ -330,10 +295,10 @@ def add_tap_coins(user_id, amount):
 
     cur.execute("""
         UPDATE players
-        SET tap_coins = tap_coins + ?
+        SET tap_coins = COALESCE(tap_coins, 0) + ?
         WHERE user_id = ?
     """, (
-        amount,
+        int(amount),
         user_id
     ))
 
@@ -347,27 +312,41 @@ def remove_tap_coins(user_id, amount):
     cur = conn.cursor()
 
     cur.execute("""
+        SELECT tap_coins
+        FROM players
+        WHERE user_id = ?
+    """, (
+        user_id,
+    ))
+
+    result = cur.fetchone()
+
+    if result is None:
+
+        conn.close()
+        return False
+
+    balance = int(result["tap_coins"] or 0)
+
+    if balance < amount:
+
+        conn.close()
+        return False
+
+    cur.execute("""
         UPDATE players
         SET tap_coins = tap_coins - ?
         WHERE user_id = ?
-        AND tap_coins >= ?
     """, (
         amount,
-        user_id,
-        amount
+        user_id
     ))
-
-    success = cur.rowcount > 0
 
     conn.commit()
     conn.close()
 
-    return success
+    return True
 
-
-# ============================================================
-# EGG COINS
-# ============================================================
 
 def add_egg_coins(user_id, amount):
 
@@ -376,10 +355,10 @@ def add_egg_coins(user_id, amount):
 
     cur.execute("""
         UPDATE players
-        SET egg_coins = egg_coins + ?
+        SET egg_coins = COALESCE(egg_coins, 0) + ?
         WHERE user_id = ?
     """, (
-        amount,
+        int(amount),
         user_id
     ))
 
@@ -393,27 +372,45 @@ def remove_egg_coins(user_id, amount):
     cur = conn.cursor()
 
     cur.execute("""
+        SELECT egg_coins
+        FROM players
+        WHERE user_id = ?
+    """, (
+        user_id,
+    ))
+
+    result = cur.fetchone()
+
+    if result is None:
+
+        conn.close()
+        return False
+
+    balance = int(result["egg_coins"] or 0)
+
+    if balance < amount:
+
+        conn.close()
+        return False
+
+    cur.execute("""
         UPDATE players
         SET egg_coins = egg_coins - ?
         WHERE user_id = ?
-        AND egg_coins >= ?
     """, (
         amount,
-        user_id,
-        amount
+        user_id
     ))
-
-    success = cur.rowcount > 0
 
     conn.commit()
     conn.close()
 
-    return success
+    return True
 
 
-# ============================================================
-# ЯЙЦА
-# ============================================================
+# =========================================================
+# EGGS
+# =========================================================
 
 def add_egg(user_id, egg_id):
 
@@ -444,7 +441,7 @@ def get_player_eggs(user_id):
         SELECT egg_id
         FROM player_eggs
         WHERE user_id = ?
-        ORDER BY id ASC
+        ORDER BY rowid ASC
     """, (
         user_id,
     ))
@@ -478,7 +475,7 @@ def get_egg_count(user_id, egg_id):
 
     conn.close()
 
-    return int(result[0])
+    return int(result[0] or 0)
 
 
 def remove_one_egg(user_id, egg_id):
@@ -487,7 +484,7 @@ def remove_one_egg(user_id, egg_id):
     cur = conn.cursor()
 
     cur.execute("""
-        SELECT id
+        SELECT rowid
         FROM player_eggs
         WHERE user_id = ?
         AND egg_id = ?
@@ -506,9 +503,9 @@ def remove_one_egg(user_id, egg_id):
 
     cur.execute("""
         DELETE FROM player_eggs
-        WHERE id = ?
+        WHERE rowid = ?
     """, (
-        result["id"],
+        result["rowid"],
     ))
 
     conn.commit()
@@ -530,16 +527,16 @@ def get_total_eggs(user_id):
         user_id,
     ))
 
-    total = cur.fetchone()[0]
+    result = cur.fetchone()
 
     conn.close()
 
-    return int(total)
+    return int(result[0] or 0)
 
 
-# ============================================================
+# =========================================================
 # XP / LEVEL
-# ============================================================
+# =========================================================
 
 def get_progress(user_id):
 
@@ -547,9 +544,7 @@ def get_progress(user_id):
     cur = conn.cursor()
 
     cur.execute("""
-        SELECT
-            xp,
-            level
+        SELECT xp, level
         FROM players
         WHERE user_id = ?
     """, (
@@ -587,24 +582,20 @@ def add_xp(user_id, amount):
     if result is None:
 
         conn.close()
-
-        ensure_player(user_id)
-
-        return add_xp(
-            user_id,
-            amount
-        )
+        return {
+            "xp": 0,
+            "level": 1
+        }
 
     current_xp = int(result["xp"] or 0)
 
-    new_xp = current_xp + amount
+    new_xp = current_xp + int(amount)
 
     new_level = (new_xp // 100) + 1
 
     cur.execute("""
         UPDATE players
-        SET
-            xp = ?,
+        SET xp = ?,
             level = ?
         WHERE user_id = ?
     """, (
@@ -616,101 +607,15 @@ def add_xp(user_id, amount):
     conn.commit()
     conn.close()
 
-    return (
-        new_xp,
-        new_level
-    )
+    return {
+        "xp": new_xp,
+        "level": new_level
+    }
 
 
-# ============================================================
-# TOTAL TAPS / GAMES
-# ============================================================
-
-def get_total_taps(user_id):
-
-    conn = get_connection()
-    cur = conn.cursor()
-
-    cur.execute("""
-        SELECT total_taps
-        FROM players
-        WHERE user_id = ?
-    """, (
-        user_id,
-    ))
-
-    result = cur.fetchone()
-
-    conn.close()
-
-    if result is None:
-        return 0
-
-    return int(result["total_taps"] or 0)
-
-
-def add_total_tap(user_id, amount=1):
-
-    conn = get_connection()
-    cur = conn.cursor()
-
-    cur.execute("""
-        UPDATE players
-        SET total_taps = total_taps + ?
-        WHERE user_id = ?
-    """, (
-        amount,
-        user_id
-    ))
-
-    conn.commit()
-    conn.close()
-
-
-def get_total_games(user_id):
-
-    conn = get_connection()
-    cur = conn.cursor()
-
-    cur.execute("""
-        SELECT total_games
-        FROM players
-        WHERE user_id = ?
-    """, (
-        user_id,
-    ))
-
-    result = cur.fetchone()
-
-    conn.close()
-
-    if result is None:
-        return 0
-
-    return int(result["total_games"] or 0)
-
-
-def add_total_game(user_id, amount=1):
-
-    conn = get_connection()
-    cur = conn.cursor()
-
-    cur.execute("""
-        UPDATE players
-        SET total_games = total_games + ?
-        WHERE user_id = ?
-    """, (
-        amount,
-        user_id
-    ))
-
-    conn.commit()
-    conn.close()
-
-
-# ============================================================
-# DAILY LOGIN
-# ============================================================
+# =========================================================
+# LOGIN
+# =========================================================
 
 def get_login_info(user_id):
 
@@ -718,9 +623,7 @@ def get_login_info(user_id):
     cur = conn.cursor()
 
     cur.execute("""
-        SELECT
-            login_streak,
-            last_login
+        SELECT login_streak, last_login
         FROM players
         WHERE user_id = ?
     """, (
@@ -748,9 +651,7 @@ def update_login(user_id):
     cur = conn.cursor()
 
     cur.execute("""
-        SELECT
-            login_streak,
-            last_login
+        SELECT login_streak, last_login
         FROM players
         WHERE user_id = ?
     """, (
@@ -770,8 +671,7 @@ def update_login(user_id):
 
         cur.execute("""
             UPDATE players
-            SET
-                login_streak = 1,
+            SET login_streak = 1,
                 last_login = ?
             WHERE user_id = ?
         """, (
@@ -805,13 +705,8 @@ def update_login(user_id):
 
         try:
 
-            last_date = date.fromisoformat(
-                last_login
-            )
-
-            today_date = date.fromisoformat(
-                today
-            )
+            last_date = date.fromisoformat(last_login)
+            today_date = date.fromisoformat(today)
 
             difference = (
                 today_date - last_date
@@ -823,17 +718,18 @@ def update_login(user_id):
                 streak = 1
 
         except Exception:
+
             streak = 1
 
     else:
+
         streak = 1
 
     reward = 5 * streak
 
     cur.execute("""
         UPDATE players
-        SET
-            login_streak = ?,
+        SET login_streak = ?,
             last_login = ?
         WHERE user_id = ?
     """, (
@@ -852,9 +748,9 @@ def update_login(user_id):
     }
 
 
-# ============================================================
+# =========================================================
 # DAILY BONUS
-# ============================================================
+# =========================================================
 
 def get_daily_bonus_date(user_id):
 
@@ -879,13 +775,7 @@ def get_daily_bonus_date(user_id):
     return result["daily_bonus_date"] or ""
 
 
-def set_daily_bonus_date(
-    user_id,
-    value=None
-):
-
-    if value is None:
-        value = date.today().isoformat()
+def set_daily_bonus_date(user_id, value):
 
     conn = get_connection()
     cur = conn.cursor()
@@ -903,9 +793,9 @@ def set_daily_bonus_date(
     conn.close()
 
 
-# ============================================================
+# =========================================================
 # DAILY TASKS
-# ============================================================
+# =========================================================
 
 def get_daily_tasks(user_id):
 
@@ -932,20 +822,13 @@ def get_daily_tasks(user_id):
 
         conn.close()
 
-        ensure_player(user_id)
-
-        return (
-            0,
-            0,
-            0
-        )
+        return 0, 0, 0
 
     if result["task_date"] != today:
 
         cur.execute("""
             UPDATE players
-            SET
-                task_date = ?,
+            SET task_date = ?,
                 task_taps = 0,
                 task_games = 0,
                 task_eggs = 0
@@ -958,11 +841,7 @@ def get_daily_tasks(user_id):
         conn.commit()
         conn.close()
 
-        return (
-            0,
-            0,
-            0
-        )
+        return 0, 0, 0
 
     taps = int(result["task_taps"] or 0)
     games = int(result["task_games"] or 0)
@@ -970,11 +849,7 @@ def get_daily_tasks(user_id):
 
     conn.close()
 
-    return (
-        taps,
-        games,
-        eggs
-    )
+    return taps, games, eggs
 
 
 def add_task_tap(user_id, amount=1):
@@ -997,14 +872,13 @@ def add_task_tap(user_id, amount=1):
     if result is None:
 
         conn.close()
-        return False
+        return
 
     if result["task_date"] != today:
 
         cur.execute("""
             UPDATE players
-            SET
-                task_date = ?,
+            SET task_date = ?,
                 task_taps = ?,
                 task_games = 0,
                 task_eggs = 0
@@ -1019,7 +893,7 @@ def add_task_tap(user_id, amount=1):
 
         cur.execute("""
             UPDATE players
-            SET task_taps = task_taps + ?
+            SET task_taps = COALESCE(task_taps, 0) + ?
             WHERE user_id = ?
         """, (
             amount,
@@ -1028,8 +902,6 @@ def add_task_tap(user_id, amount=1):
 
     conn.commit()
     conn.close()
-
-    return True
 
 
 def add_task_game(user_id, amount=1):
@@ -1052,14 +924,13 @@ def add_task_game(user_id, amount=1):
     if result is None:
 
         conn.close()
-        return False
+        return
 
     if result["task_date"] != today:
 
         cur.execute("""
             UPDATE players
-            SET
-                task_date = ?,
+            SET task_date = ?,
                 task_taps = 0,
                 task_games = ?,
                 task_eggs = 0
@@ -1074,7 +945,7 @@ def add_task_game(user_id, amount=1):
 
         cur.execute("""
             UPDATE players
-            SET task_games = task_games + ?
+            SET task_games = COALESCE(task_games, 0) + ?
             WHERE user_id = ?
         """, (
             amount,
@@ -1083,8 +954,6 @@ def add_task_game(user_id, amount=1):
 
     conn.commit()
     conn.close()
-
-    return True
 
 
 def add_task_egg(user_id, amount=1):
@@ -1107,14 +976,13 @@ def add_task_egg(user_id, amount=1):
     if result is None:
 
         conn.close()
-        return False
+        return
 
     if result["task_date"] != today:
 
         cur.execute("""
             UPDATE players
-            SET
-                task_date = ?,
+            SET task_date = ?,
                 task_taps = 0,
                 task_games = 0,
                 task_eggs = ?
@@ -1129,7 +997,7 @@ def add_task_egg(user_id, amount=1):
 
         cur.execute("""
             UPDATE players
-            SET task_eggs = task_eggs + ?
+            SET task_eggs = COALESCE(task_eggs, 0) + ?
             WHERE user_id = ?
         """, (
             amount,
@@ -1139,12 +1007,6 @@ def add_task_egg(user_id, amount=1):
     conn.commit()
     conn.close()
 
-    return True
-
-
-# ============================================================
-# DAILY TASK CLAIMS
-# ============================================================
 
 def has_daily_task_claim(user_id, task_id):
 
@@ -1180,7 +1042,24 @@ def add_daily_task_claim(user_id, task_id):
     cur = conn.cursor()
 
     cur.execute("""
-        INSERT OR IGNORE INTO daily_task_claims (
+        SELECT 1
+        FROM daily_task_claims
+        WHERE user_id = ?
+        AND task_date = ?
+        AND task_id = ?
+    """, (
+        user_id,
+        today,
+        str(task_id)
+    ))
+
+    if cur.fetchone() is not None:
+
+        conn.close()
+        return False
+
+    cur.execute("""
+        INSERT INTO daily_task_claims (
             user_id,
             task_date,
             task_id
@@ -1192,22 +1071,17 @@ def add_daily_task_claim(user_id, task_id):
         str(task_id)
     ))
 
-    success = cur.rowcount > 0
-
     conn.commit()
     conn.close()
 
-    return success
+    return True
 
 
-# ============================================================
+# =========================================================
 # ACHIEVEMENTS
-# ============================================================
+# =========================================================
 
-def has_achievement(
-    user_id,
-    achievement_id
-):
+def has_achievement(user_id, achievement_id):
 
     conn = get_connection()
     cur = conn.cursor()
@@ -1230,16 +1104,19 @@ def has_achievement(
     return result is not None
 
 
-def add_achievement(
-    user_id,
-    achievement_id
-):
+def add_achievement(user_id, achievement_id):
+
+    if has_achievement(
+        user_id,
+        achievement_id
+    ):
+        return False
 
     conn = get_connection()
     cur = conn.cursor()
 
     cur.execute("""
-        INSERT OR IGNORE INTO achievements (
+        INSERT INTO achievements (
             user_id,
             achievement_id
         )
@@ -1249,12 +1126,10 @@ def add_achievement(
         achievement_id
     ))
 
-    success = cur.rowcount > 0
-
     conn.commit()
     conn.close()
 
-    return success
+    return True
 
 
 def get_achievements(user_id):
@@ -1262,11 +1137,14 @@ def get_achievements(user_id):
     conn = get_connection()
     cur = conn.cursor()
 
+    # ВАЖНО:
+    # НЕ используем ORDER BY id,
+    # потому что старая БД может не иметь такой колонки.
     cur.execute("""
         SELECT achievement_id
         FROM achievements
         WHERE user_id = ?
-        ORDER BY id ASC
+        ORDER BY achievement_id ASC
     """, (
         user_id,
     ))
@@ -1281,9 +1159,9 @@ def get_achievements(user_id):
     ]
 
 
-# ============================================================
+# =========================================================
 # ITEMS
-# ============================================================
+# =========================================================
 
 def add_item(user_id, item_id):
 
@@ -1320,11 +1198,11 @@ def get_item_count(user_id, item_id):
         item_id
     ))
 
-    count = cur.fetchone()[0]
+    result = cur.fetchone()
 
     conn.close()
 
-    return int(count)
+    return int(result[0] or 0)
 
 
 def get_items(user_id):
@@ -1333,9 +1211,7 @@ def get_items(user_id):
     cur = conn.cursor()
 
     cur.execute("""
-        SELECT
-            item_id,
-            COUNT(*) AS item_count
+        SELECT item_id, COUNT(*) AS item_count
         FROM player_items
         WHERE user_id = ?
         GROUP BY item_id
@@ -1351,7 +1227,7 @@ def get_items(user_id):
 
     for row in rows:
 
-        result[str(row["item_id"])] = int(
+        result[int(row["item_id"])] = int(
             row["item_count"]
         )
 
@@ -1364,7 +1240,7 @@ def remove_item(user_id, item_id):
     cur = conn.cursor()
 
     cur.execute("""
-        SELECT id
+        SELECT rowid
         FROM player_items
         WHERE user_id = ?
         AND item_id = ?
@@ -1383,9 +1259,9 @@ def remove_item(user_id, item_id):
 
     cur.execute("""
         DELETE FROM player_items
-        WHERE id = ?
+        WHERE rowid = ?
     """, (
-        result["id"],
+        result["rowid"],
     ))
 
     conn.commit()
@@ -1394,9 +1270,9 @@ def remove_item(user_id, item_id):
     return True
 
 
-# ============================================================
+# =========================================================
 # BOSS
-# ============================================================
+# =========================================================
 
 def get_boss_damage(user_id):
 
@@ -1428,7 +1304,7 @@ def add_boss_damage(user_id, amount):
 
     cur.execute("""
         UPDATE players
-        SET boss_damage = boss_damage + ?
+        SET boss_damage = COALESCE(boss_damage, 0) + ?
         WHERE user_id = ?
     """, (
         amount,
@@ -1439,9 +1315,9 @@ def add_boss_damage(user_id, amount):
     conn.close()
 
 
-# ============================================================
+# =========================================================
 # BLOCK
-# ============================================================
+# =========================================================
 
 def block_player(user_id):
 
@@ -1497,12 +1373,12 @@ def is_blocked(user_id):
     if result is None:
         return False
 
-    return bool(result["blocked"])
+    return bool(int(result["blocked"] or 0))
 
 
-# ============================================================
-# ВСЕ ИГРОКИ
-# ============================================================
+# =========================================================
+# PLAYERS / LEADERBOARD
+# =========================================================
 
 def get_all_players():
 
@@ -1525,10 +1401,6 @@ def get_all_players():
     ]
 
 
-# ============================================================
-# LEADERBOARD
-# ============================================================
-
 def get_top_players(limit=10):
 
     conn = get_connection()
@@ -1544,10 +1416,8 @@ def get_top_players(limit=10):
             level
         FROM players
         WHERE blocked = 0
-        ORDER BY
-            egg_coins DESC,
-            tap_coins DESC,
-            xp DESC
+        ORDER BY egg_coins DESC,
+                 tap_coins DESC
         LIMIT ?
     """, (
         limit,
@@ -1557,14 +1427,24 @@ def get_top_players(limit=10):
 
     conn.close()
 
-    return [
-        dict(row)
-        for row in rows
-    ]
+    result = []
+
+    for row in rows:
+
+        result.append({
+            "user_id": int(row["user_id"]),
+            "username": row["username"] or "",
+            "tap_coins": int(row["tap_coins"] or 0),
+            "egg_coins": int(row["egg_coins"] or 0),
+            "xp": int(row["xp"] or 0),
+            "level": int(row["level"] or 1)
+        })
+
+    return result
 
 
-# ============================================================
-# ИНИЦИАЛИЗАЦИЯ
-# ============================================================
+# =========================================================
+# START DATABASE
+# =========================================================
 
 init_database()
