@@ -1468,6 +1468,38 @@ def get_top_players(limit=10):
     return result
 
 
+
+def claim_task(user_id, task_id):
+    """Atomically mark today's task as claimed."""
+    taps, games, eggs = get_daily_tasks(user_id)
+    progress = {
+        "tap": (taps, 100),
+        "game": (games, 3),
+        "egg": (eggs, 1),
+    }
+    if task_id not in progress:
+        return False
+    current, target = progress[task_id]
+    if current < target or has_daily_task_claim(user_id, task_id):
+        return False
+    return add_daily_task_claim(user_id, task_id)
+
+def get_player_rank(user_id):
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT user_id
+        FROM players
+        WHERE blocked = 0
+        ORDER BY egg_coins DESC, tap_coins DESC
+    """)
+    rows = cur.fetchall()
+    conn.close()
+    for rank, row in enumerate(rows, 1):
+        if int(row["user_id"]) == int(user_id):
+            return rank
+    return 0
+
 # =========================================================
 # START DATABASE
 # =========================================================
