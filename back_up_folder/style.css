@@ -1,0 +1,1379 @@
+* {
+    box-sizing: border-box;
+}
+
+:root {
+    --bg: #09020f;
+    --panel: #160921;
+    --panel2: #20102e;
+    --purple: #8f4dff;
+    --purple2: #a65cff;
+    --text: #fff;
+    --muted: #a99ab7;
+    --border: rgba(255, 255, 255, .08);
+    --gold: #ffd66b;
+}
+
+html,
+body {
+    margin: 0;
+    padding: 0;
+
+    background: var(--bg);
+    color: var(--text);
+
+    font-family: Arial, sans-serif;
+
+    min-height: 100%;
+
+    overscroll-behavior: none;
+}
+
+body {
+    background:
+        radial-gradient(
+            circle at 50% -10%,
+            #3a1264 0,
+            #12051f 35%,
+            #09020f 70%
+        );
+
+    padding-bottom: 80px;
+}
+
+
+/* =========================
+   ОБЩИЕ ЭЛЕМЕНТЫ
+========================= */
+
+button {
+    font: inherit;
+    color: inherit;
+
+    border: 0;
+    cursor: pointer;
+
+    -webkit-tap-highlight-color: transparent;
+
+    transition:
+        transform .12s ease,
+        opacity .12s ease,
+        background .15s ease;
+}
+
+button:active {
+    transform: scale(.97);
+}
+
+button:disabled {
+    cursor: default;
+}
+
+.hidden {
+    display: none !important;
+}
+
+
+.app {
+    max-width: 520px;
+
+    margin: auto;
+
+    padding:
+        14px
+        14px
+        90px;
+
+    min-height: 100vh;
+}
+
+
+/* =========================
+   ВЕРХНЯЯ ПАНЕЛЬ
+========================= */
+
+.topbar {
+    display: flex;
+
+    justify-content: space-between;
+    align-items: center;
+
+    margin: 4px 0 14px;
+}
+
+.brand {
+    font-weight: 900;
+    font-size: 20px;
+
+    letter-spacing: .5px;
+}
+
+.subbrand {
+    color: var(--muted);
+
+    font-size: 12px;
+
+    margin-top: 3px;
+}
+
+.icon-btn,
+.small-btn {
+    background: var(--panel2);
+
+    border: 1px solid var(--border);
+
+    border-radius: 14px;
+
+    padding: 10px;
+}
+
+.icon-btn {
+    min-width: 44px;
+    min-height: 44px;
+
+    font-size: 20px;
+}
+
+.small-btn {
+    min-width: 42px;
+    min-height: 42px;
+
+    font-size: 22px;
+}
+
+
+/* =========================
+   БАЛАНСЫ
+========================= */
+
+.balances {
+    display: grid;
+
+    grid-template-columns:
+        1fr 1fr;
+
+    gap: 10px;
+
+    margin-bottom: 14px;
+}
+
+.balance-card {
+    background:
+        linear-gradient(
+            145deg,
+            #1c0a2c,
+            #110519
+        );
+
+    border: 1px solid var(--border);
+
+    border-radius: 18px;
+
+    padding: 12px;
+}
+
+.balance-card span {
+    display: block;
+
+    color: var(--muted);
+
+    font-size: 12px;
+}
+
+.balance-card b {
+    display: block;
+
+    font-size: 22px;
+
+    margin-top: 5px;
+}
+
+.balance-card.egg b {
+    color: var(--gold);
+}
+
+
+/* =========================
+   СТРАНИЦЫ
+========================= */
+
+.page {
+    display: none;
+}
+
+.page.active {
+    display: block;
+}
+
+h2 {
+    font-size: 22px;
+
+    margin:
+        8px
+        0
+        14px;
+}
+
+
+/* =========================
+   ТАПАЛКА
+========================= */
+
+.tap-card {
+    position: relative;
+
+    background:
+        linear-gradient(
+            160deg,
+            #241039,
+            #12051f
+        );
+
+    border: 1px solid var(--border);
+
+    border-radius: 28px;
+
+    padding: 18px;
+
+    text-align: center;
+
+    overflow: hidden;
+}
+
+.streak {
+    font-size: 13px;
+
+    color: #ffc85a;
+
+    margin-bottom: 5px;
+}
+
+.egg-button {
+    width: 230px;
+    height: 230px;
+
+    border-radius: 50%;
+
+    font-size: 130px;
+
+    background:
+        radial-gradient(
+            circle,
+            #5f2a91 0,
+            #2c0e47 55%,
+            #15051f 70%
+        );
+
+    box-shadow:
+        0 0 45px rgba(
+            151,
+            75,
+            255,
+            .28
+        ),
+        inset 0 0 40px rgba(
+            255,
+            255,
+            255,
+            .05
+        );
+
+    margin: 10px auto;
+
+    display: block;
+
+    transition:
+        transform .08s ease;
+}
+
+.egg-button:active {
+    transform: scale(.92);
+}
+
+.tap-hint {
+    font-size: 12px;
+
+    letter-spacing: 2px;
+
+    color: var(--muted);
+
+    margin:
+        5px
+        0
+        14px;
+}
+
+.primary {
+    width: 100%;
+
+    padding: 13px;
+
+    border-radius: 15px;
+
+    background:
+        linear-gradient(
+            90deg,
+            #6e32d9,
+            #a65cff
+        );
+
+    font-weight: 800;
+
+    box-shadow:
+        0 5px 20px
+        rgba(
+            120,
+            50,
+            220,
+            .15
+        );
+}
+
+.primary:hover {
+    opacity: .92;
+}
+
+
+/* =========================
+   TAP FLOATERS
+========================= */
+
+.quick-grid {
+    display: grid;
+
+    grid-template-columns:
+        1fr 1fr;
+
+    gap: 10px;
+
+    margin-top: 12px;
+}
+
+.feature {
+    background: var(--panel);
+
+    border: 1px solid var(--border);
+
+    border-radius: 18px;
+
+    padding: 17px;
+
+    font-size: 28px;
+}
+
+.feature span {
+    display: block;
+
+    font-size: 13px;
+
+    color: var(--muted);
+
+    margin-top: 6px;
+}
+
+.floaters {
+    position: absolute;
+
+    inset: 0;
+
+    pointer-events: none;
+}
+
+.floater {
+    position: absolute;
+
+    font-weight: 900;
+
+    color: #fff;
+
+    animation:
+        float 800ms ease-out forwards;
+
+    pointer-events: none;
+}
+
+@keyframes float {
+
+    from {
+        transform: translateY(0);
+        opacity: 1;
+    }
+
+    to {
+        transform: translateY(-70px);
+        opacity: 0;
+    }
+}
+
+
+/* =========================
+   ИГРЫ
+========================= */
+
+.game-list {
+    display: grid;
+
+    gap: 10px;
+}
+
+.game-card {
+    width: 100%;
+
+    background: var(--panel);
+
+    border: 1px solid var(--border);
+
+    border-radius: 17px;
+
+    padding: 15px;
+
+    text-align: left;
+}
+
+.game-card:hover {
+    background: #1b0b29;
+}
+
+.game-card b {
+    display: block;
+
+    font-size: 16px;
+}
+
+.game-card small {
+    display: block;
+
+    color: var(--muted);
+
+    margin-top: 5px;
+}
+
+.game-area {
+    margin-top: 12px;
+
+    background: var(--panel2);
+
+    border-radius: 18px;
+
+    padding: 15px;
+
+    text-align: center;
+
+    border: 1px solid var(--border);
+}
+
+.game-area h3 {
+    margin-top: 4px;
+}
+
+
+/* =========================
+   INPUT
+========================= */
+
+.input {
+    width: 100%;
+
+    padding: 13px;
+
+    border-radius: 13px;
+
+    background: #0c0413;
+
+    border: 1px solid var(--border);
+
+    color: #fff;
+
+    margin:
+        8px
+        0;
+
+    outline: none;
+}
+
+.input:focus {
+    border-color: rgba(
+        143,
+        77,
+        255,
+        .6
+    );
+
+    box-shadow:
+        0 0 0 3px
+        rgba(
+            143,
+            77,
+            255,
+            .1
+        );
+}
+
+.input::placeholder {
+    color: #75677f;
+}
+
+
+/* =========================
+   ЯЙЦА
+========================= */
+
+.section-head {
+    display: flex;
+
+    justify-content: space-between;
+
+    align-items: center;
+}
+
+.tabs {
+    display: flex;
+
+    gap: 8px;
+
+    margin-bottom: 12px;
+}
+
+.tab {
+    flex: 1;
+
+    background: var(--panel);
+
+    padding: 11px;
+
+    border-radius: 13px;
+
+    color: var(--muted);
+
+    border: 1px solid var(--border);
+}
+
+.tab.active {
+    background: #6730a3;
+
+    color: #fff;
+}
+
+.egg-item {
+    background: var(--panel);
+
+    border: 1px solid var(--border);
+
+    border-radius: 17px;
+
+    padding: 14px;
+
+    margin-bottom: 9px;
+}
+
+.egg-top {
+    display: flex;
+
+    justify-content: space-between;
+
+    align-items: center;
+
+    gap: 10px;
+}
+
+.egg-name {
+    font-weight: 800;
+
+    font-size: 15px;
+}
+
+.rarity {
+    font-size: 12px;
+
+    color: var(--muted);
+
+    margin-top: 4px;
+}
+
+.price {
+    color: var(--gold);
+
+    font-weight: 800;
+
+    white-space: nowrap;
+}
+
+.action {
+    background: #6d35d5;
+
+    padding:
+        9px
+        12px;
+
+    border-radius: 11px;
+
+    margin-top: 10px;
+
+    font-weight: 700;
+}
+
+.action:hover {
+    background: #7d42e8;
+}
+
+.action:disabled {
+    opacity: .45;
+
+    cursor: not-allowed;
+}
+
+
+/* =========================
+   ПРОГРЕСС / XP
+========================= */
+
+.level-card {
+    background: var(--panel);
+
+    border: 1px solid var(--border);
+
+    border-radius: 18px;
+
+    padding: 15px;
+
+    margin-bottom: 12px;
+}
+
+.level-line {
+    display: flex;
+
+    justify-content: space-between;
+
+    align-items: center;
+
+    gap: 10px;
+}
+
+.progress {
+    height: 9px;
+
+    background: #0c0413;
+
+    border-radius: 20px;
+
+    overflow: hidden;
+
+    margin-top: 10px;
+}
+
+.progress div {
+    height: 100%;
+
+    width: 0;
+
+    background:
+        linear-gradient(
+            90deg,
+            #7540e8,
+            #c084ff
+        );
+
+    transition:
+        width .3s ease;
+}
+
+
+/* =========================
+   МЕНЮ
+========================= */
+
+.menu-list {
+    display: grid;
+
+    gap: 10px;
+}
+
+.menu-row {
+    width: 100%;
+
+    background: var(--panel);
+
+    border: 1px solid var(--border);
+
+    border-radius: 17px;
+
+    padding: 15px;
+
+    text-align: left;
+
+    display: flex;
+
+    justify-content: space-between;
+
+    align-items: center;
+}
+
+.menu-row:hover {
+    background: #1b0b29;
+}
+
+.menu-row span {
+    color: var(--muted);
+
+    font-size: 22px;
+}
+
+
+/* =========================
+   ПРОФИЛЬ
+========================= */
+
+.profile-card {
+    text-align: center;
+
+    background: var(--panel);
+
+    border-radius: 22px;
+
+    padding: 18px;
+
+    border: 1px solid var(--border);
+
+    margin-bottom: 12px;
+}
+
+
+/*
+   КНОПКА АВАТАРА
+*/
+
+.avatar {
+    width: 105px;
+    height: 105px;
+
+    display: flex;
+
+    align-items: center;
+    justify-content: center;
+
+    margin:
+        0
+        auto
+        10px;
+
+    border-radius: 50%;
+
+    font-size: 55px;
+
+    background:
+        radial-gradient(
+            circle at 35% 30%,
+            #6d35a8,
+            #291039 65%,
+            #13051d
+        );
+
+    border:
+        2px solid
+        rgba(
+            255,
+            255,
+            255,
+            .1
+        );
+
+    box-shadow:
+        0 0 30px
+        rgba(
+            143,
+            77,
+            255,
+            .18
+        );
+}
+
+.avatar:hover {
+    transform: scale(1.04);
+}
+
+.profile-card h3 {
+    margin:
+        8px
+        0
+        5px;
+
+    font-size: 20px;
+}
+
+.profile-card p {
+    color: var(--muted);
+
+    font-size: 12px;
+
+    margin:
+        0
+        0
+        10px;
+}
+
+.stats {
+    display: grid;
+
+    grid-template-columns:
+        1fr 1fr;
+
+    gap: 8px;
+
+    margin-top: 12px;
+}
+
+.stats div {
+    background: var(--panel2);
+
+    padding: 11px;
+
+    border-radius: 13px;
+}
+
+.stats b {
+    display: block;
+
+    font-size: 18px;
+}
+
+.stats span {
+    font-size: 11px;
+
+    color: var(--muted);
+}
+
+
+/* =========================
+   ВЫБОР АВАТАРА
+========================= */
+
+.avatar-grid {
+    display: grid;
+
+    grid-template-columns:
+        repeat(5, 1fr);
+
+    gap: 10px;
+
+    margin-top: 15px;
+}
+
+.avatar-choice {
+    min-width: 0;
+
+    aspect-ratio: 1 / 1;
+
+    display: flex;
+
+    align-items: center;
+    justify-content: center;
+
+    padding: 8px;
+
+    border-radius: 14px;
+
+    background: var(--panel2);
+
+    border:
+        1px solid
+        var(--border);
+
+    font-size: 32px;
+}
+
+.avatar-choice:hover {
+    background: #2c1640;
+
+    transform: scale(1.04);
+}
+
+.avatar-choice:active {
+    transform: scale(.94);
+}
+
+
+/* =========================
+   КРЕСТИКИ-НОЛИКИ
+========================= */
+
+.tic {
+    display: grid;
+
+    grid-template-columns:
+        repeat(3, 1fr);
+
+    gap: 7px;
+
+    margin:
+        14px
+        0;
+}
+
+.tic button {
+    height: 72px;
+
+    border-radius: 13px;
+
+    background: #0e0515;
+
+    font-size: 30px;
+
+    border:
+        1px solid
+        var(--border);
+
+    display: flex;
+
+    align-items: center;
+    justify-content: center;
+}
+
+.tic button:hover:not(:disabled) {
+    background: #1c0c29;
+}
+
+.tic button:disabled {
+    cursor: default;
+
+    opacity: 1;
+}
+
+
+/* =========================
+   ЛИДЕРБОРД
+========================= */
+
+.leader {
+    display: flex;
+
+    justify-content: space-between;
+
+    align-items: center;
+
+    gap: 10px;
+
+    padding: 12px;
+
+    background: var(--panel);
+
+    border-radius: 14px;
+
+    margin-bottom: 7px;
+
+    border: 1px solid var(--border);
+}
+
+.leader > div {
+    min-width: 0;
+}
+
+.leader b {
+    display: block;
+
+    overflow-wrap: anywhere;
+}
+
+.leader small {
+    display: block;
+
+    color: var(--muted);
+
+    margin-top: 4px;
+}
+
+
+/* =========================
+   BOSS
+========================= */
+
+.boss-hp {
+    font-size: 28px;
+
+    font-weight: 900;
+
+    text-align: center;
+
+    margin:
+        10px
+        0;
+}
+
+.boss-name {
+    text-align: center;
+
+    color: var(--muted);
+
+    margin: 4px;
+}
+
+.boss-bar {
+    height: 18px;
+
+    background: #0b0410;
+
+    border-radius: 20px;
+
+    overflow: hidden;
+
+    margin:
+        12px
+        0;
+}
+
+.boss-bar div {
+    height: 100%;
+
+    background:
+        linear-gradient(
+            90deg,
+            #ff3f6c,
+            #a33cff
+        );
+
+    transition:
+        width .2s ease;
+}
+
+
+/* =========================
+   ПРЕДМЕТЫ
+========================= */
+
+.item-card {
+    background: var(--panel);
+
+    border:
+        1px solid
+        var(--border);
+
+    border-radius: 17px;
+
+    padding: 14px;
+
+    margin-bottom: 9px;
+}
+
+.item-top {
+    display: flex;
+
+    justify-content: space-between;
+
+    align-items: center;
+
+    gap: 10px;
+}
+
+.item-top b {
+    font-size: 15px;
+}
+
+
+/* =========================
+   ДОСТИЖЕНИЯ
+========================= */
+
+.achievement {
+    background: var(--panel);
+
+    border:
+        1px solid
+        var(--border);
+
+    border-radius: 17px;
+
+    padding: 14px;
+
+    margin-bottom: 9px;
+}
+
+
+/* =========================
+   ЗАДАНИЯ
+========================= */
+
+.task {
+    background: var(--panel);
+
+    border:
+        1px solid
+        var(--border);
+
+    border-radius: 17px;
+
+    padding: 14px;
+
+    margin-bottom: 9px;
+}
+
+.task p {
+    color: var(--muted);
+
+    font-size: 12px;
+}
+
+
+/* =========================
+   НИЖНЯЯ НАВИГАЦИЯ
+========================= */
+
+.bottom-nav {
+    position: fixed;
+
+    z-index: 20;
+
+    bottom: 0;
+
+    left: 50%;
+
+    transform: translateX(-50%);
+
+    width: min(
+        520px,
+        100%
+    );
+
+    display: grid;
+
+    grid-template-columns:
+        repeat(5, 1fr);
+
+    background:
+        rgba(
+            12,
+            4,
+            19,
+            .95
+        );
+
+    backdrop-filter:
+        blur(14px);
+
+    border-top:
+        1px solid
+        var(--border);
+
+    padding:
+        7px
+        5px
+        calc(
+            7px +
+            env(
+                safe-area-inset-bottom
+            )
+        );
+}
+
+.bottom-nav button {
+    background: none;
+
+    color: var(--muted);
+
+    font-size: 20px;
+
+    padding: 5px;
+}
+
+.bottom-nav button span {
+    display: block;
+
+    font-size: 9px;
+
+    margin-top: 2px;
+}
+
+.bottom-nav button.active {
+    color: #fff;
+}
+
+
+/* =========================
+   MODAL
+========================= */
+
+.modal {
+    position: fixed;
+
+    inset: 0;
+
+    background:
+        rgba(
+            0,
+            0,
+            0,
+            .72
+        );
+
+    z-index: 50;
+
+    display: flex;
+
+    align-items: flex-end;
+
+    justify-content: center;
+}
+
+.modal-box {
+    position: relative;
+
+    width: min(
+        520px,
+        100%
+    );
+
+    max-height: 88vh;
+
+    overflow: auto;
+
+    background: #13071d;
+
+    border-radius:
+        24px
+        24px
+        0
+        0;
+
+    padding:
+        22px
+        15px
+        25px;
+}
+
+.modal-close {
+    position: absolute;
+
+    right: 13px;
+    top: 8px;
+
+    background: #281334;
+
+    border-radius: 50%;
+
+    width: 34px;
+    height: 34px;
+
+    font-size: 25px;
+
+    line-height: 1;
+}
+
+.modal-close:hover {
+    background: #382044;
+}
+
+
+/* =========================
+   TOAST
+========================= */
+
+.toast {
+    position: fixed;
+
+    z-index: 100;
+
+    left: 50%;
+
+    bottom: 95px;
+
+    transform:
+        translateX(-50%);
+
+    background: #2a1735;
+
+    padding:
+        11px
+        15px;
+
+    border-radius: 13px;
+
+    border:
+        1px solid
+        var(--border);
+
+    opacity: 0;
+
+    pointer-events: none;
+
+    transition:
+        opacity .2s ease,
+        transform .2s ease;
+
+    max-width: 90%;
+
+    text-align: center;
+
+    font-size: 14px;
+}
+
+.toast.show {
+    opacity: 1;
+
+    transform:
+        translateX(-50%)
+        translateY(-3px);
+}
+
+
+/* =========================
+   МОБИЛЬНЫЕ ЭКРАНЫ
+========================= */
+
+@media (max-width: 380px) {
+
+    .app {
+        padding-left: 10px;
+        padding-right: 10px;
+    }
+
+    .egg-button {
+        width: 200px;
+        height: 200px;
+
+        font-size: 110px;
+    }
+
+    .avatar {
+        width: 90px;
+        height: 90px;
+
+        font-size: 48px;
+    }
+
+    .avatar-grid {
+        gap: 7px;
+    }
+
+    .avatar-choice {
+        font-size: 27px;
+    }
+
+    .tic button {
+        height: 64px;
+
+        font-size: 26px;
+    }
+}
+
+
+/* =========================
+   АНИМАЦИИ
+========================= */
+
+@keyframes pulse {
+
+    0% {
+        transform: scale(1);
+    }
+
+    50% {
+        transform: scale(1.03);
+    }
+
+    100% {
+        transform: scale(1);
+    }
+}
+
+.egg-button:hover {
+    animation:
+        pulse 1s ease-in-out infinite;
+}

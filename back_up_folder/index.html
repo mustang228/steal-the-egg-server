@@ -1,0 +1,742 @@
+<!doctype html>
+<html lang="ru">
+
+<head>
+    <meta charset="UTF-8">
+
+    <meta name="viewport"
+          content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+
+    <meta name="theme-color" content="#12051f">
+
+    <title>STEAL THE EGG</title>
+
+    <link rel="stylesheet" href="./style.css">
+</head>
+
+<body>
+
+<div class="stars"></div>
+
+<main id="app" class="app hidden">
+
+    <!-- =========================
+         ВЕРХНЯЯ ПАНЕЛЬ
+    ========================== -->
+
+    <header class="topbar">
+
+        <div>
+
+            <div class="brand">
+                🥚 STEAL THE EGG
+            </div>
+
+            <div id="username" class="subbrand">
+                Загрузка...
+            </div>
+
+        </div>
+
+        <button
+            class="icon-btn"
+            data-page="profile"
+            type="button"
+        >
+            👤
+        </button>
+
+    </header>
+
+
+    <!-- =========================
+         БАЛАНСЫ
+    ========================== -->
+
+    <section class="balances">
+
+        <div class="balance-card">
+
+            <span>
+                👆 Tap Coins
+            </span>
+
+            <b id="tapCoins">
+                0
+            </b>
+
+        </div>
+
+
+        <div class="balance-card egg">
+
+            <span>
+                🥚 Egg Coins
+            </span>
+
+            <b id="eggCoins">
+                0
+            </b>
+
+        </div>
+
+    </section>
+
+
+    <!-- =========================
+         ГЛАВНАЯ
+    ========================== -->
+
+    <section
+        id="home"
+        class="page active"
+    >
+
+        <div class="tap-card">
+
+            <div class="streak">
+
+                🔥 Серия:
+                <b id="streak">0</b>
+                дней
+
+            </div>
+
+
+            <button
+                id="eggTap"
+                class="egg-button"
+                type="button"
+            >
+                🥚
+            </button>
+
+
+            <div
+                id="tapFloaters"
+                class="floaters"
+            ></div>
+
+
+            <div class="tap-hint">
+                НАЖИМАЙ НА ЯЙЦО
+            </div>
+
+
+            <button
+                id="exchangeBtn"
+                class="primary"
+                type="button"
+            >
+                💰 Обменять Tap Coins
+            </button>
+
+        </div>
+
+
+        <div class="quick-grid">
+
+            <button
+                class="feature"
+                data-page="games"
+                type="button"
+            >
+                🎮
+                <span>Игры</span>
+            </button>
+
+
+            <button
+                class="feature"
+                data-page="eggs"
+                type="button"
+            >
+                🥚
+                <span>Яйца</span>
+            </button>
+
+
+            <button
+                class="feature"
+                data-page="progress"
+                type="button"
+            >
+                🏆
+                <span>Прогресс</span>
+            </button>
+
+
+            <button
+                class="feature"
+                data-page="profile"
+                type="button"
+            >
+                👤
+                <span>Профиль</span>
+            </button>
+
+        </div>
+
+    </section>
+
+
+    <!-- =========================
+         ИГРЫ
+    ========================== -->
+
+    <section
+        id="games"
+        class="page"
+    >
+
+        <h2>
+            🎮 Мини-игры
+        </h2>
+
+
+        <div class="game-list">
+
+            <button
+                class="game-card"
+                id="guessBtn"
+                type="button"
+            >
+
+                <b>
+                    🔢 Угадай число
+                </b>
+
+                <small>
+                    1–20 · до 10 попыток
+                </small>
+
+            </button>
+
+
+            <button
+                class="game-card"
+                id="mathBtn"
+                type="button"
+            >
+
+                <b>
+                    🧠 Математика
+                </b>
+
+                <small>
+                    Реши пример и получи Egg Coins
+                </small>
+
+            </button>
+
+
+            <button
+                class="game-card"
+                id="ticBtn"
+                type="button"
+            >
+
+                <b>
+                    ❌⭕ Крестики-нолики
+                </b>
+
+                <small>
+                    Сыграй против компьютера
+                </small>
+
+            </button>
+
+        </div>
+
+
+        <div
+            id="gameArea"
+            class="game-area"
+        ></div>
+
+    </section>
+
+
+    <!-- =========================
+         ЯЙЦА
+    ========================== -->
+
+    <section
+        id="eggs"
+        class="page"
+    >
+
+        <div class="section-head">
+
+            <h2>
+                🥚 Яйца
+            </h2>
+
+
+            <button
+                class="small-btn"
+                id="refreshEggs"
+                type="button"
+            >
+                ↻
+            </button>
+
+        </div>
+
+
+        <div class="tabs">
+
+            <button
+                class="tab active"
+                data-tab="shop"
+                type="button"
+            >
+                🛒 Магазин
+            </button>
+
+
+            <button
+                class="tab"
+                data-tab="collection"
+                type="button"
+            >
+                🎒 Мои яйца
+            </button>
+
+        </div>
+
+
+        <div id="eggContent"></div>
+
+    </section>
+
+
+    <!-- =========================
+         ПРОГРЕСС
+    ========================== -->
+
+    <section
+        id="progress"
+        class="page"
+    >
+
+        <h2>
+            🏆 Прогресс
+        </h2>
+
+
+        <div class="level-card">
+
+            <div class="level-line">
+
+                <b>
+                    ⭐ Уровень
+                    <span id="level">
+                        1
+                    </span>
+                </b>
+
+
+                <span id="xpText">
+                    0/100 XP
+                </span>
+
+            </div>
+
+
+            <div class="progress">
+
+                <div id="xpBar"></div>
+
+            </div>
+
+        </div>
+
+
+        <div class="menu-list">
+
+            <button
+                class="menu-row"
+                id="achievementsBtn"
+                type="button"
+            >
+
+                🏆 Достижения
+
+                <span>›</span>
+
+            </button>
+
+
+            <button
+                class="menu-row"
+                id="leaderboardBtn"
+                type="button"
+            >
+
+                📊 Таблица лидеров
+
+                <span>›</span>
+
+            </button>
+
+
+            <button
+                class="menu-row"
+                id="tasksBtn"
+                type="button"
+            >
+
+                🎯 Ежедневные задания
+
+                <span>›</span>
+
+            </button>
+
+
+            <button
+                class="menu-row"
+                id="bonusBtn"
+                type="button"
+            >
+
+                🎁 Ежедневный бонус
+
+                <span>›</span>
+
+            </button>
+
+
+            <button
+                class="menu-row"
+                id="bossBtn"
+                type="button"
+            >
+
+                👾 Босс
+
+                <span>›</span>
+
+            </button>
+
+
+            <button
+                class="menu-row"
+                id="itemsBtn"
+                type="button"
+            >
+
+                🛒 Магазин предметов
+
+                <span>›</span>
+
+            </button>
+
+
+            <button
+                class="menu-row"
+                id="withdrawBtn"
+                type="button"
+            >
+
+                🥚 Вывод яиц
+
+                <span>›</span>
+
+            </button>
+
+        </div>
+
+    </section>
+
+
+    <!-- =========================
+         ПРОФИЛЬ
+    ========================== -->
+
+    <section
+        id="profile"
+        class="page"
+    >
+
+        <h2>
+            👤 Мой профиль
+        </h2>
+
+
+        <div class="profile-card">
+
+            <!-- АВАТАР -->
+
+            <button
+                id="avatarButton"
+                class="avatar"
+                type="button"
+                title="Изменить аватар"
+            >
+                🥚
+            </button>
+
+
+            <h3 id="profileName">
+                Игрок
+            </h3>
+
+
+            <p id="profileId">
+                ID: —
+            </p>
+
+
+            <div class="stats">
+
+                <div>
+
+                    <b id="profileTap">
+                        0
+                    </b>
+
+                    <span>
+                        Tap Coins
+                    </span>
+
+                </div>
+
+
+                <div>
+
+                    <b id="profileEgg">
+                        0
+                    </b>
+
+                    <span>
+                        Egg Coins
+                    </span>
+
+                </div>
+
+
+                <div>
+
+                    <b id="profileEggs">
+                        0
+                    </b>
+
+                    <span>
+                        Яиц
+                    </span>
+
+                </div>
+
+
+                <div>
+
+                    <b id="profileAch">
+                        0
+                    </b>
+
+                    <span>
+                        Достижений
+                    </span>
+
+                </div>
+
+            </div>
+
+        </div>
+
+
+        <!-- КНОПКА СМЕНЫ АВАТАРА -->
+
+        <div class="menu-list">
+
+            <button
+                class="menu-row"
+                id="changeAvatarBtn"
+                type="button"
+            >
+
+                🖼️ Изменить аватар
+
+                <span>›</span>
+
+            </button>
+
+
+            <button
+                class="menu-row"
+                data-page="progress"
+                type="button"
+            >
+
+                🏆 Прогресс
+
+                <span>›</span>
+
+            </button>
+
+
+            <button
+                class="menu-row"
+                id="profileItems"
+                type="button"
+            >
+
+                🛒 Предметы
+
+                <span>›</span>
+
+            </button>
+
+
+            <button
+                class="menu-row"
+                id="profileWithdraw"
+                type="button"
+            >
+
+                🥚 Вывод яиц
+
+                <span>›</span>
+
+            </button>
+
+        </div>
+
+    </section>
+
+
+    <!-- =========================
+         НИЖНЯЯ НАВИГАЦИЯ
+    ========================== -->
+
+    <nav class="bottom-nav">
+
+        <button
+            data-page="home"
+            class="active"
+            type="button"
+        >
+
+            🏠
+
+            <span>
+                Главная
+            </span>
+
+        </button>
+
+
+        <button
+            data-page="games"
+            type="button"
+        >
+
+            🎮
+
+            <span>
+                Игры
+            </span>
+
+        </button>
+
+
+        <button
+            data-page="eggs"
+            type="button"
+        >
+
+            🥚
+
+            <span>
+                Яйца
+            </span>
+
+        </button>
+
+
+        <button
+            data-page="progress"
+            type="button"
+        >
+
+            🏆
+
+            <span>
+                Прогресс
+            </span>
+
+        </button>
+
+
+        <button
+            data-page="profile"
+            type="button"
+        >
+
+            👤
+
+            <span>
+                Профиль
+            </span>
+
+        </button>
+
+    </nav>
+
+</main>
+
+
+<!-- =========================
+     МОДАЛЬНОЕ ОКНО
+========================== -->
+
+<div
+    id="modal"
+    class="modal hidden"
+>
+
+    <div class="modal-box">
+
+        <button
+            id="modalClose"
+            class="modal-close"
+            type="button"
+            aria-label="Закрыть"
+        >
+            ×
+        </button>
+
+
+        <div id="modalContent"></div>
+
+    </div>
+
+</div>
+
+
+<!-- =========================
+     УВЕДОМЛЕНИЯ
+========================== -->
+
+<div
+    id="toast"
+    class="toast"
+></div>
+
+
+<!-- =========================
+     TELEGRAM MINI APP
+========================== -->
+
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+
+
+<!-- =========================
+     ОСНОВНОЙ JAVASCRIPT
+========================== -->
+
+<script src="./script.js"></script>
+
+</body>
+</html>
