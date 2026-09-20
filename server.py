@@ -34,7 +34,7 @@ print("BOT_TOKEN длина:", len(BOT_TOKEN))
 print("PORT:", PORT)
 print("========================================")
 
-WITHDRAWAL_BOT = "https://t.me/stealtheegg_vyvod_bot"
+WITHDRAWAL_BOT = "https://t.me/stealthegg_vyvod_bot"
 
 
 # =========================================================
@@ -1462,7 +1462,62 @@ def math_answer():
 # TIC TAC TOE
 # =========================================================
 
+TIC_BOARD_SIZE = 9
+
+
+def create_empty_tic_board():
+    """
+    Создаёт стандартное поле 3x3.
+    Всегда ровно 9 клеток.
+    """
+    return [""] * TIC_BOARD_SIZE
+
+
+def normalize_tic_board(board):
+    """
+    Защищает игру от повреждённого состояния.
+
+    Если по какой-то причине сервер получил:
+    - меньше 9 клеток — добавляем пустые;
+    - больше 9 клеток — обрезаем;
+    - board вообще не список — создаём новое поле.
+
+    В результате всегда возвращается список из 9 элементов.
+    """
+
+    if not isinstance(board, list):
+
+        return create_empty_tic_board()
+
+    normalized = []
+
+    for i in range(TIC_BOARD_SIZE):
+
+        if i < len(board):
+
+            value = board[i]
+
+            if value in ("X", "O"):
+
+                normalized.append(value)
+
+            else:
+
+                normalized.append("")
+
+        else:
+
+            normalized.append("")
+
+    return normalized
+
+
 def check_tic_winner(board):
+
+    # Сначала обязательно нормализуем поле.
+    board = normalize_tic_board(
+        board
+    )
 
     combinations = [
 
@@ -1509,18 +1564,13 @@ def tic_start():
             user
         )
 
+        # Всегда создаём новое поле из 9 клеток.
+        board = create_empty_tic_board()
+
         tic_games[user_id] = {
 
-            "board": [
-                "",
-                "",
-                "",
-                "",
-                "",
-                "",
-                "",
-                ""
-            ]
+            "board":
+                board
         }
 
         return jsonify({
@@ -1529,7 +1579,7 @@ def tic_start():
                 True,
 
             "board":
-                tic_games[user_id]["board"]
+                board
         })
 
     except Exception as e:
@@ -1565,14 +1615,33 @@ def tic_move():
                 "Сначала начни игру"
             )
 
+        # -------------------------------------------------
+        # НОРМАЛИЗАЦИЯ СОСТОЯНИЯ ИГРЫ
+        # -------------------------------------------------
+
+        board = normalize_tic_board(
+            game.get("board")
+        )
+
+        # Сохраняем исправленную доску обратно.
+        game["board"] = board
+
+        # -------------------------------------------------
+        # ПОЛУЧАЕМ ИНДЕКС КЛЕТКИ
+        # -------------------------------------------------
+
         data = request.get_json(
             silent=True
         ) or {}
 
+        raw_index = data.get(
+            "index"
+        )
+
         try:
 
             index = int(
-                data.get("index")
+                raw_index
             )
 
         except Exception:
@@ -1581,13 +1650,30 @@ def tic_move():
                 "Неверная клетка"
             )
 
-        if index < 0 or index > 8:
+        # Очень важная проверка.
+        # Допустимые индексы:
+        #
+        # 0 1 2
+        # 3 4 5
+        # 6 7 8
+        #
+        if index < 0 or index >= TIC_BOARD_SIZE:
 
             raise ValueError(
                 "Неверная клетка"
             )
 
-        board = game["board"]
+        # Дополнительная защита перед обращением
+        # к board[index].
+        if index >= len(board):
+
+            raise ValueError(
+                "Ошибка игрового поля"
+            )
+
+        # -------------------------------------------------
+        # ПРОВЕРЯЕМ, СВОБОДНА ЛИ КЛЕТКА
+        # -------------------------------------------------
 
         if board[index] != "":
 
@@ -1595,12 +1681,21 @@ def tic_move():
                 "Эта клетка уже занята"
             )
 
-        # Игрок
+        # -------------------------------------------------
+        # ХОД ИГРОКА
+        # -------------------------------------------------
+
         board[index] = "X"
+
+        game["board"] = board
 
         winner = check_tic_winner(
             board
         )
+
+        # -------------------------------------------------
+        # ПОБЕДА ИГРОКА
+        # -------------------------------------------------
 
         if winner == "X":
 
@@ -1651,6 +1746,10 @@ def tic_move():
                     snap(user_id)
             })
 
+        # -------------------------------------------------
+        # НИЧЬЯ ПОСЛЕ ХОДА ИГРОКА
+        # -------------------------------------------------
+
         if winner == "draw":
 
             del tic_games[user_id]
@@ -1673,15 +1772,20 @@ def tic_move():
                     snap(user_id)
             })
 
-        # Компьютер
+        # -------------------------------------------------
+        # ХОД КОМПЬЮТЕРА
+        # -------------------------------------------------
+
+        # Получаем именно свободные клетки.
+        # Поэтому компьютер никогда не сможет выбрать
+        # несуществующий или занятый индекс.
         empty = [
 
             i
 
-            for i, cell
-            in enumerate(board)
+            for i in range(TIC_BOARD_SIZE)
 
-            if cell == ""
+            if board[i] == ""
         ]
 
         if empty:
@@ -1691,6 +1795,12 @@ def tic_move():
             )
 
             board[bot_index] = "O"
+
+            game["board"] = board
+
+        # -------------------------------------------------
+        # ПРОВЕРКА ПОБЕДЫ КОМПЬЮТЕРА
+        # -------------------------------------------------
 
         winner = check_tic_winner(
             board
@@ -1725,6 +1835,10 @@ def tic_move():
                     snap(user_id)
             })
 
+        # -------------------------------------------------
+        # НИЧЬЯ ПОСЛЕ ХОДА КОМПЬЮТЕРА
+        # -------------------------------------------------
+
         if winner == "draw":
 
             del tic_games[user_id]
@@ -1746,6 +1860,10 @@ def tic_move():
                 "data":
                     snap(user_id)
             })
+
+        # -------------------------------------------------
+        # ИГРА ПРОДОЛЖАЕТСЯ
+        # -------------------------------------------------
 
         return jsonify({
 
