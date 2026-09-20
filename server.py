@@ -23,14 +23,16 @@ CORS(app)
 # =========================================================
 
 BOT_TOKEN = os.getenv("BOT_TOKEN", "")
-print("BOT_TOKEN найден:", bool(BOT_TOKEN))
-print("BOT_TOKEN длина:", len(BOT_TOKEN))
 PORT = int(os.getenv("PORT", "10000"))
 
-# Проверяем переменную при запуске.
+# Диагностика.
 # Сам токен НЕ выводим.
+print("========================================")
+print("STEAL THE EGG SERVER")
 print("BOT_TOKEN найден:", bool(BOT_TOKEN))
 print("BOT_TOKEN длина:", len(BOT_TOKEN))
+print("PORT:", PORT)
+print("========================================")
 
 WITHDRAWAL_BOT = "https://t.me/stealtheegg_vyvod_bot"
 
@@ -247,11 +249,24 @@ database.init_database()
 
 def validate_telegram_data(init_data):
 
+    print("=== TELEGRAM AUTH ===")
+    print("BOT_TOKEN есть:", bool(BOT_TOKEN))
+    print("BOT_TOKEN длина:", len(BOT_TOKEN))
+    print("init_data есть:", bool(init_data))
+    print(
+        "init_data длина:",
+        len(init_data) if init_data else 0
+    )
+
     if not init_data:
-        raise ValueError("Нет Telegram Init Data")
+        raise ValueError(
+            "Нет Telegram Init Data"
+        )
 
     if not BOT_TOKEN:
-        raise ValueError("BOT_TOKEN не настроен")
+        raise ValueError(
+            "BOT_TOKEN не настроен"
+        )
 
     data = dict(
         parse_qsl(
@@ -260,28 +275,44 @@ def validate_telegram_data(init_data):
         )
     )
 
+    print(
+        "Telegram поля:",
+        list(data.keys())
+    )
+
     received_hash = data.pop(
         "hash",
         None
     )
 
     if not received_hash:
-        raise ValueError("Нет hash")
+        raise ValueError(
+            "Нет hash"
+        )
 
     try:
+
         auth_date = int(
             data.get(
                 "auth_date",
                 "0"
             )
         )
+
     except ValueError:
-        raise ValueError("Неверный auth_date")
+
+        raise ValueError(
+            "Неверный auth_date"
+        )
 
     if not auth_date:
-        raise ValueError("Нет auth_date")
+
+        raise ValueError(
+            "Нет auth_date"
+        )
 
     if time.time() - auth_date > 86400:
+
         raise ValueError(
             "Telegram данные устарели"
         )
@@ -309,23 +340,28 @@ def validate_telegram_data(init_data):
         calculated_hash,
         received_hash
     ):
+
         raise ValueError(
             "Неверная Telegram подпись"
         )
 
     try:
+
         user = json.loads(
             data.get(
                 "user",
                 "{}"
             )
         )
+
     except json.JSONDecodeError:
+
         raise ValueError(
             "Неверные данные пользователя Telegram"
         )
 
     if not user:
+
         raise ValueError(
             "Не найден пользователь Telegram"
         )
@@ -344,6 +380,12 @@ def get_current_user():
         init_data
     )
 
+    if "id" not in user:
+
+        raise ValueError(
+            "Не найден ID пользователя Telegram"
+        )
+
     user_id = int(
         user["id"]
     )
@@ -357,6 +399,7 @@ def get_current_user():
     if database.is_blocked(
         user_id
     ):
+
         raise ValueError(
             "Пользователь заблокирован"
         )
@@ -367,6 +410,7 @@ def get_current_user():
 def require_user():
 
     try:
+
         return get_current_user()
 
     except Exception as e:
@@ -378,7 +422,10 @@ def require_user():
 
 
 def uid_from_user(user):
-    return int(user["id"])
+
+    return int(
+        user["id"]
+    )
 
 
 def get_username(user):
@@ -396,9 +443,12 @@ def get_username(user):
 
 def activate_item(user_id, item_id):
 
-    item_id = int(item_id)
+    item_id = int(
+        item_id
+    )
 
     if item_id not in ITEMS:
+
         raise ValueError(
             "Предмет не найден"
         )
@@ -409,6 +459,7 @@ def activate_item(user_id, item_id):
     )
 
     if count <= 0:
+
         raise ValueError(
             "У тебя нет этого предмета"
         )
@@ -427,7 +478,10 @@ def activate_item(user_id, item_id):
     )
 
 
-def is_item_active(user_id, item_id):
+def is_item_active(
+    user_id,
+    item_id
+):
 
     user_items = active_items.get(
         user_id,
@@ -439,6 +493,7 @@ def is_item_active(user_id, item_id):
     )
 
     if not expires:
+
         return False
 
     if time.time() >= expires:
@@ -453,12 +508,16 @@ def is_item_active(user_id, item_id):
     return True
 
 
-def give_xp(user_id, amount):
+def give_xp(
+    user_id,
+    amount
+):
 
     if is_item_active(
         user_id,
         3
     ):
+
         amount *= 2
 
     return database.add_xp(
@@ -467,12 +526,16 @@ def give_xp(user_id, amount):
     )
 
 
-def give_game_reward(user_id, amount):
+def give_game_reward(
+    user_id,
+    amount
+):
 
     if is_item_active(
         user_id,
         2
     ):
+
         amount += 1
 
     database.add_egg_coins(
@@ -490,7 +553,9 @@ def give_game_reward(user_id, amount):
 # ACHIEVEMENTS
 # =========================================================
 
-def check_achievements(user_id):
+def check_achievements(
+    user_id
+):
 
     result = []
 
@@ -561,9 +626,15 @@ def check_achievements(user_id):
         )
 
         result.append({
-            "id": achievement_id,
-            "name": achievement["name"],
-            "reward": achievement["reward"]
+
+            "id":
+                achievement_id,
+
+            "name":
+                achievement["name"],
+
+            "reward":
+                achievement["reward"]
         })
 
     return result
@@ -591,8 +662,10 @@ def snap(user_id):
         user_id
     )
 
-    taps, games, eggs = database.get_daily_tasks(
-        user_id
+    taps, games, eggs = (
+        database.get_daily_tasks(
+            user_id
+        )
     )
 
     player_eggs = database.get_player_eggs(
@@ -630,49 +703,68 @@ def snap(user_id):
         user_id
     )
 
-    # 100 XP = один уровень
     xp_required = 100
 
-    # XP внутри текущего уровня
     current_xp = xp % xp_required
 
     return {
 
-        "tap_coins": tap_coins,
+        "tap_coins":
+            tap_coins,
 
-        "egg_coins": egg_coins,
+        "egg_coins":
+            egg_coins,
 
-        "xp": current_xp,
+        "xp":
+            current_xp,
 
-        "xp_total": xp,
+        "xp_total":
+            xp,
 
-        "xp_required": xp_required,
+        "xp_required":
+            xp_required,
 
-        "level": level,
+        "level":
+            level,
 
-        "streak": streak,
+        "streak":
+            streak,
 
         "tasks": {
-            "taps": taps,
-            "games": games,
-            "eggs": eggs
+
+            "taps":
+                taps,
+
+            "games":
+                games,
+
+            "eggs":
+                eggs
         },
 
-        "boss_damage": boss_damage,
+        "boss_damage":
+            boss_damage,
 
-        "eggs": player_eggs,
+        "eggs":
+            player_eggs,
 
-        "eggs_total": len(player_eggs),
+        "eggs_total":
+            len(player_eggs),
 
-        "egg_counts": egg_counts,
+        "egg_counts":
+            egg_counts,
 
-        "items": items,
+        "items":
+            items,
 
-        "achievements": achievements,
+        "achievements":
+            achievements,
 
-        "avatar": avatar,
+        "avatar":
+            avatar,
 
-        "avatars": AVATARS
+        "avatars":
+            AVATARS
     }
 
 
@@ -720,18 +812,25 @@ def api_init():
 
         return jsonify({
 
-            "ok": True,
+            "ok":
+                True,
 
-            "user": user,
+            "user":
+                user,
 
-            "username": get_username(
-                user
-            ),
+            "username":
+                get_username(user),
 
             "login": {
-                "claimed": not claimed,
-                "streak": streak,
-                "reward": reward
+
+                "claimed":
+                    not claimed,
+
+                "streak":
+                    streak,
+
+                "reward":
+                    reward
             },
 
             "new_achievements":
@@ -744,8 +843,12 @@ def api_init():
     except Exception as e:
 
         return jsonify({
-            "ok": False,
-            "error": str(e)
+
+            "ok":
+                False,
+
+            "error":
+                str(e)
         }), 400
 
 
@@ -762,7 +865,8 @@ def api_state():
 
         return jsonify({
 
-            "ok": True,
+            "ok":
+                True,
 
             "data":
                 snap(
@@ -775,8 +879,12 @@ def api_state():
     except Exception as e:
 
         return jsonify({
-            "ok": False,
-            "error": str(e)
+
+            "ok":
+                False,
+
+            "error":
+                str(e)
         }), 400
 
 
@@ -803,6 +911,7 @@ def api_tap():
         )
 
         if now - previous < 0.05:
+
             raise ValueError(
                 "Слишком быстро"
             )
@@ -815,6 +924,7 @@ def api_tap():
             user_id,
             1
         ):
+
             amount += 2
 
         database.add_tap_coins(
@@ -841,9 +951,11 @@ def api_tap():
 
         return jsonify({
 
-            "ok": True,
+            "ok":
+                True,
 
-            "amount": amount,
+            "amount":
+                amount,
 
             "new_achievements":
                 new_achievements,
@@ -855,8 +967,12 @@ def api_tap():
     except Exception as e:
 
         return jsonify({
-            "ok": False,
-            "error": str(e)
+
+            "ok":
+                False,
+
+            "error":
+                str(e)
         }), 400
 
 
@@ -895,9 +1011,11 @@ def api_exchange():
 
         return jsonify({
 
-            "ok": True,
+            "ok":
+                True,
 
-            "received": 10,
+            "received":
+                10,
 
             "data":
                 snap(user_id)
@@ -906,8 +1024,12 @@ def api_exchange():
     except Exception as e:
 
         return jsonify({
-            "ok": False,
-            "error": str(e)
+
+            "ok":
+                False,
+
+            "error":
+                str(e)
         }), 400
 
 
@@ -928,24 +1050,31 @@ def guess_start():
 
         guess_games[user_id] = {
 
-            "number": random.randint(
-                1,
-                20
-            ),
+            "number":
+                random.randint(
+                    1,
+                    20
+                ),
 
-            "attempts": 0
+            "attempts":
+                0
         }
 
         return jsonify({
 
-            "ok": True
+            "ok":
+                True
         })
 
     except Exception as e:
 
         return jsonify({
-            "ok": False,
-            "error": str(e)
+
+            "ok":
+                False,
+
+            "error":
+                str(e)
         }), 400
 
 
@@ -966,6 +1095,7 @@ def guess_try():
         )
 
         if not game:
+
             raise ValueError(
                 "Сначала начни игру"
             )
@@ -1026,16 +1156,20 @@ def guess_try():
 
             return jsonify({
 
-                "ok": True,
+                "ok":
+                    True,
 
-                "result": "win",
+                "result":
+                    "win",
 
-                "number": number,
+                "number":
+                    number,
 
                 "attempts":
                     game["attempts"],
 
-                "reward": reward,
+                "reward":
+                    reward,
 
                 "new_achievements":
                     new_achievements,
@@ -1050,15 +1184,20 @@ def guess_try():
 
             return jsonify({
 
-                "ok": True,
+                "ok":
+                    True,
 
-                "result": "lose",
+                "result":
+                    "lose",
 
-                "number": number,
+                "number":
+                    number,
 
-                "attempts": 10,
+                "attempts":
+                    10,
 
-                "reward": 0,
+                "reward":
+                    0,
 
                 "data":
                     snap(user_id)
@@ -1072,11 +1211,14 @@ def guess_try():
 
         return jsonify({
 
-            "ok": True,
+            "ok":
+                True,
 
-            "result": "continue",
+            "result":
+                "continue",
 
-            "hint": hint,
+            "hint":
+                hint,
 
             "attempts":
                 game["attempts"]
@@ -1085,8 +1227,12 @@ def guess_try():
     except Exception as e:
 
         return jsonify({
-            "ok": False,
-            "error": str(e)
+
+            "ok":
+                False,
+
+            "error":
+                str(e)
         }), 400
 
 
@@ -1126,13 +1272,17 @@ def create_math_game(user_id):
 
     math_games[user_id] = {
 
-        "a": a,
+        "a":
+            a,
 
-        "b": b,
+        "b":
+            b,
 
-        "operation": operation,
+        "operation":
+            operation,
 
-        "answer": answer,
+        "answer":
+            answer,
 
         "question":
             f"{a} {operation} {b} = ?"
@@ -1158,7 +1308,8 @@ def math_start():
 
         return jsonify({
 
-            "ok": True,
+            "ok":
+                True,
 
             "question":
                 game["question"]
@@ -1167,8 +1318,12 @@ def math_start():
     except Exception as e:
 
         return jsonify({
-            "ok": False,
-            "error": str(e)
+
+            "ok":
+                False,
+
+            "error":
+                str(e)
         }), 400
 
 
@@ -1211,7 +1366,6 @@ def math_answer():
 
         correct_answer = game["answer"]
 
-        # Неправильный ответ
         if answer != correct_answer:
 
             new_game = create_math_game(
@@ -1220,14 +1374,17 @@ def math_answer():
 
             return jsonify({
 
-                "ok": True,
+                "ok":
+                    True,
 
-                "result": "lose",
+                "result":
+                    "lose",
 
                 "correct":
                     correct_answer,
 
-                "reward": 0,
+                "reward":
+                    0,
 
                 "message":
                     "❌ Неправильно! Новый пример:",
@@ -1239,7 +1396,6 @@ def math_answer():
                     new_game["question"]
             })
 
-        # Правильный ответ
         reward = 10
 
         give_game_reward(
@@ -1271,14 +1427,17 @@ def math_answer():
 
         return jsonify({
 
-            "ok": True,
+            "ok":
+                True,
 
-            "result": "win",
+            "result":
+                "win",
 
             "correct":
                 correct_answer,
 
-            "reward": reward,
+            "reward":
+                reward,
 
             "new_achievements":
                 new_achievements,
@@ -1290,8 +1449,12 @@ def math_answer():
     except Exception as e:
 
         return jsonify({
-            "ok": False,
-            "error": str(e)
+
+            "ok":
+                False,
+
+            "error":
+                str(e)
         }), 400
 
 
@@ -1322,12 +1485,14 @@ def check_tic_winner(board):
             and board[a] == board[b]
             and board[b] == board[c]
         ):
+
             return board[a]
 
     if all(
         cell != ""
         for cell in board
     ):
+
         return "draw"
 
     return None
@@ -1346,21 +1511,22 @@ def tic_start():
 
         tic_games[user_id] = {
 
-    "board": [
-        "",
-        "",
-        "",
-        "",
-        "",
-        "",
-        "",
-        ""
-    ]
-}
+            "board": [
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                ""
+            ]
+        }
 
         return jsonify({
 
-            "ok": True,
+            "ok":
+                True,
 
             "board":
                 tic_games[user_id]["board"]
@@ -1369,8 +1535,12 @@ def tic_start():
     except Exception as e:
 
         return jsonify({
-            "ok": False,
-            "error": str(e)
+
+            "ok":
+                False,
+
+            "error":
+                str(e)
         }), 400
 
 
@@ -1462,13 +1632,17 @@ def tic_move():
 
             return jsonify({
 
-                "ok": True,
+                "ok":
+                    True,
 
-                "result": "win",
+                "result":
+                    "win",
 
-                "board": board,
+                "board":
+                    board,
 
-                "reward": reward,
+                "reward":
+                    reward,
 
                 "new_achievements":
                     new_achievements,
@@ -1483,13 +1657,17 @@ def tic_move():
 
             return jsonify({
 
-                "ok": True,
+                "ok":
+                    True,
 
-                "result": "draw",
+                "result":
+                    "draw",
 
-                "board": board,
+                "board":
+                    board,
 
-                "reward": 2,
+                "reward":
+                    2,
 
                 "data":
                     snap(user_id)
@@ -1497,9 +1675,12 @@ def tic_move():
 
         # Компьютер
         empty = [
+
             i
+
             for i, cell
             in enumerate(board)
+
             if cell == ""
         ]
 
@@ -1528,13 +1709,17 @@ def tic_move():
 
             return jsonify({
 
-                "ok": True,
+                "ok":
+                    True,
 
-                "result": "lose",
+                "result":
+                    "lose",
 
-                "board": board,
+                "board":
+                    board,
 
-                "reward": 0,
+                "reward":
+                    0,
 
                 "data":
                     snap(user_id)
@@ -1546,13 +1731,17 @@ def tic_move():
 
             return jsonify({
 
-                "ok": True,
+                "ok":
+                    True,
 
-                "result": "draw",
+                "result":
+                    "draw",
 
-                "board": board,
+                "board":
+                    board,
 
-                "reward": 2,
+                "reward":
+                    2,
 
                 "data":
                     snap(user_id)
@@ -1560,18 +1749,25 @@ def tic_move():
 
         return jsonify({
 
-            "ok": True,
+            "ok":
+                True,
 
-            "result": "continue",
+            "result":
+                "continue",
 
-            "board": board
+            "board":
+                board
         })
 
     except Exception as e:
 
         return jsonify({
-            "ok": False,
-            "error": str(e)
+
+            "ok":
+                False,
+
+            "error":
+                str(e)
         }), 400
 
 
@@ -1617,7 +1813,8 @@ def api_eggs():
 
             shop[str(egg_id)] = {
 
-                "id": egg_id,
+                "id":
+                    egg_id,
 
                 "name":
                     egg["name"],
@@ -1631,20 +1828,28 @@ def api_eggs():
 
         return jsonify({
 
-            "ok": True,
+            "ok":
+                True,
 
-            "shop": shop,
+            "shop":
+                shop,
 
-            "owned": owned,
+            "owned":
+                owned,
 
-            "eggs": shop
+            "eggs":
+                shop
         })
 
     except Exception as e:
 
         return jsonify({
-            "ok": False,
-            "error": str(e)
+
+            "ok":
+                False,
+
+            "error":
+                str(e)
         }), 400
 
 
@@ -1717,11 +1922,13 @@ def buy_egg():
 
         return jsonify({
 
-            "ok": True,
+            "ok":
+                True,
 
             "egg": {
 
-                "id": egg_id,
+                "id":
+                    egg_id,
 
                 "name":
                     egg["name"],
@@ -1743,8 +1950,12 @@ def buy_egg():
     except Exception as e:
 
         return jsonify({
-            "ok": False,
-            "error": str(e)
+
+            "ok":
+                False,
+
+            "error":
+                str(e)
         }), 400
 
 
@@ -1819,11 +2030,14 @@ def open_egg():
 
         return jsonify({
 
-            "ok": True,
+            "ok":
+                True,
 
-            "egg_id": egg_id,
+            "egg_id":
+                egg_id,
 
-            "reward": reward,
+            "reward":
+                reward,
 
             "new_achievements":
                 new_achievements,
@@ -1835,8 +2049,12 @@ def open_egg():
     except Exception as e:
 
         return jsonify({
-            "ok": False,
-            "error": str(e)
+
+            "ok":
+                False,
+
+            "error":
+                str(e)
         }), 400
 
 
@@ -1861,7 +2079,8 @@ def api_items():
 
             result[str(item_id)] = {
 
-                "id": item_id,
+                "id":
+                    item_id,
 
                 "name":
                     item["name"],
@@ -1890,16 +2109,22 @@ def api_items():
 
         return jsonify({
 
-            "ok": True,
+            "ok":
+                True,
 
-            "items": result
+            "items":
+                result
         })
 
     except Exception as e:
 
         return jsonify({
-            "ok": False,
-            "error": str(e)
+
+            "ok":
+                False,
+
+            "error":
+                str(e)
         }), 400
 
 
@@ -1954,7 +2179,8 @@ def buy_item():
 
         return jsonify({
 
-            "ok": True,
+            "ok":
+                True,
 
             "data":
                 snap(user_id)
@@ -1963,8 +2189,12 @@ def buy_item():
     except Exception as e:
 
         return jsonify({
-            "ok": False,
-            "error": str(e)
+
+            "ok":
+                False,
+
+            "error":
+                str(e)
         }), 400
 
 
@@ -1994,7 +2224,8 @@ def use_item():
 
         return jsonify({
 
-            "ok": True,
+            "ok":
+                True,
 
             "data":
                 snap(user_id)
@@ -2003,8 +2234,12 @@ def use_item():
     except Exception as e:
 
         return jsonify({
-            "ok": False,
-            "error": str(e)
+
+            "ok":
+                False,
+
+            "error":
+                str(e)
         }), 400
 
 
@@ -2024,7 +2259,9 @@ def api_achievements():
         )
 
         unlocked = {
+
             a["achievement_id"]
+
             for a in database.get_achievements(
                 user_id
             )
@@ -2038,7 +2275,8 @@ def api_achievements():
 
             items.append({
 
-                "id": achievement_id,
+                "id":
+                    achievement_id,
 
                 "name":
                     achievement["name"],
@@ -2055,16 +2293,22 @@ def api_achievements():
 
         return jsonify({
 
-            "ok": True,
+            "ok":
+                True,
 
-            "items": items
+            "items":
+                items
         })
 
     except Exception as e:
 
         return jsonify({
-            "ok": False,
-            "error": str(e)
+
+            "ok":
+                False,
+
+            "error":
+                str(e)
         }), 400
 
 
@@ -2100,7 +2344,8 @@ def leaderboard():
 
             result.append({
 
-                "rank": i,
+                "rank":
+                    i,
 
                 "user_id":
                     player_id,
@@ -2131,10 +2376,12 @@ def leaderboard():
         )
 
         all_players.sort(
+
             key=lambda p: (
                 p["egg_coins"],
                 p["xp"]
             ),
+
             reverse=True
         )
 
@@ -2155,18 +2402,25 @@ def leaderboard():
 
         return jsonify({
 
-            "ok": True,
+            "ok":
+                True,
 
-            "players": result,
+            "players":
+                result,
 
-            "my_rank": my_rank
+            "my_rank":
+                my_rank
         })
 
     except Exception as e:
 
         return jsonify({
-            "ok": False,
-            "error": str(e)
+
+            "ok":
+                False,
+
+            "error":
+                str(e)
         }), 400
 
 
@@ -2187,7 +2441,8 @@ def get_avatar_api():
 
         return jsonify({
 
-            "ok": True,
+            "ok":
+                True,
 
             "avatar":
                 database.get_avatar(
@@ -2201,8 +2456,12 @@ def get_avatar_api():
     except Exception as e:
 
         return jsonify({
-            "ok": False,
-            "error": str(e)
+
+            "ok":
+                False,
+
+            "error":
+                str(e)
         }), 400
 
 
@@ -2241,7 +2500,8 @@ def set_avatar_api():
 
         return jsonify({
 
-            "ok": True,
+            "ok":
+                True,
 
             "avatar":
                 avatar,
@@ -2253,8 +2513,12 @@ def set_avatar_api():
     except Exception as e:
 
         return jsonify({
-            "ok": False,
-            "error": str(e)
+
+            "ok":
+                False,
+
+            "error":
+                str(e)
         }), 400
 
 
@@ -2299,9 +2563,11 @@ def daily_bonus():
 
         return jsonify({
 
-            "ok": True,
+            "ok":
+                True,
 
-            "reward": reward,
+            "reward":
+                reward,
 
             "data":
                 snap(user_id)
@@ -2310,8 +2576,12 @@ def daily_bonus():
     except Exception as e:
 
         return jsonify({
-            "ok": False,
-            "error": str(e)
+
+            "ok":
+                False,
+
+            "error":
+                str(e)
         }), 400
 
 
@@ -2339,11 +2609,21 @@ def daily_tasks():
         tasks = [
 
             {
-                "id": 1,
-                "title": "👆 Сделать 50 тапов",
-                "progress": taps,
-                "target": 50,
-                "reward": 10,
+                "id":
+                    1,
+
+                "title":
+                    "👆 Сделать 50 тапов",
+
+                "progress":
+                    taps,
+
+                "target":
+                    50,
+
+                "reward":
+                    10,
+
                 "claimed":
                     database.has_daily_task_claim(
                         user_id,
@@ -2352,11 +2632,21 @@ def daily_tasks():
             },
 
             {
-                "id": 2,
-                "title": "🎮 Сыграть 3 игры",
-                "progress": games,
-                "target": 3,
-                "reward": 15,
+                "id":
+                    2,
+
+                "title":
+                    "🎮 Сыграть 3 игры",
+
+                "progress":
+                    games,
+
+                "target":
+                    3,
+
+                "reward":
+                    15,
+
                 "claimed":
                     database.has_daily_task_claim(
                         user_id,
@@ -2365,11 +2655,21 @@ def daily_tasks():
             },
 
             {
-                "id": 3,
-                "title": "🥚 Получить яйцо",
-                "progress": eggs,
-                "target": 1,
-                "reward": 20,
+                "id":
+                    3,
+
+                "title":
+                    "🥚 Получить яйцо",
+
+                "progress":
+                    eggs,
+
+                "target":
+                    1,
+
+                "reward":
+                    20,
+
                 "claimed":
                     database.has_daily_task_claim(
                         user_id,
@@ -2380,16 +2680,22 @@ def daily_tasks():
 
         return jsonify({
 
-            "ok": True,
+            "ok":
+                True,
 
-            "tasks": tasks
+            "tasks":
+                tasks
         })
 
     except Exception as e:
 
         return jsonify({
-            "ok": False,
-            "error": str(e)
+
+            "ok":
+                False,
+
+            "error":
+                str(e)
         }), 400
 
 
@@ -2476,9 +2782,11 @@ def claim_task():
 
         return jsonify({
 
-            "ok": True,
+            "ok":
+                True,
 
-            "reward": reward,
+            "reward":
+                reward,
 
             "data":
                 snap(user_id)
@@ -2487,8 +2795,12 @@ def claim_task():
     except Exception as e:
 
         return jsonify({
-            "ok": False,
-            "error": str(e)
+
+            "ok":
+                False,
+
+            "error":
+                str(e)
         }), 400
 
 
@@ -2509,9 +2821,11 @@ def boss():
 
         return jsonify({
 
-            "ok": True,
+            "ok":
+                True,
 
-            "hp": boss_hp,
+            "hp":
+                boss_hp,
 
             "max_hp":
                 BOSS_MAX_HP,
@@ -2525,8 +2839,12 @@ def boss():
     except Exception as e:
 
         return jsonify({
-            "ok": False,
-            "error": str(e)
+
+            "ok":
+                False,
+
+            "error":
+                str(e)
         }), 400
 
 
@@ -2599,13 +2917,17 @@ def boss_attack():
 
         return jsonify({
 
-            "ok": True,
+            "ok":
+                True,
 
-            "damage": damage,
+            "damage":
+                damage,
 
-            "defeated": defeated,
+            "defeated":
+                defeated,
 
-            "hp": boss_hp,
+            "hp":
+                boss_hp,
 
             "max_hp":
                 BOSS_MAX_HP,
@@ -2620,8 +2942,12 @@ def boss_attack():
     except Exception as e:
 
         return jsonify({
-            "ok": False,
-            "error": str(e)
+
+            "ok":
+                False,
+
+            "error":
+                str(e)
         }), 400
 
 
@@ -2665,7 +2991,8 @@ def withdrawal():
 
                 eggs[key] = {
 
-                    "id": egg_id,
+                    "id":
+                        egg_id,
 
                     "name":
                         EGGS[egg_id]["name"],
@@ -2673,13 +3000,16 @@ def withdrawal():
                     "rarity":
                         EGGS[egg_id]["rarity"],
 
-                    "count": 0
+                    "count":
+                        0
                 }
 
             eggs[key]["count"] += 1
 
         total_eggs = sum(
+
             item["count"]
+
             for item in eggs.values()
         )
 
@@ -2689,7 +3019,8 @@ def withdrawal():
 
             shop[str(egg_id)] = {
 
-                "id": egg_id,
+                "id":
+                    egg_id,
 
                 "name":
                     egg["name"],
@@ -2703,7 +3034,8 @@ def withdrawal():
 
         return jsonify({
 
-            "ok": True,
+            "ok":
+                True,
 
             "bot":
                 WITHDRAWAL_BOT,
@@ -2718,9 +3050,11 @@ def withdrawal():
                     user_id
                 ),
 
-            "eggs": eggs,
+            "eggs":
+                eggs,
 
-            "shop": shop,
+            "shop":
+                shop,
 
             "total_eggs":
                 total_eggs,
@@ -2732,8 +3066,12 @@ def withdrawal():
     except Exception as e:
 
         return jsonify({
-            "ok": False,
-            "error": str(e)
+
+            "ok":
+                False,
+
+            "error":
+                str(e)
         }), 400
 
 
@@ -2746,7 +3084,8 @@ def index():
 
     return jsonify({
 
-        "ok": True,
+        "ok":
+            True,
 
         "name":
             "STEAL THE EGG SERVER",
@@ -2760,7 +3099,9 @@ def index():
 def health():
 
     return jsonify({
-        "ok": True
+
+        "ok":
+            True
     })
 
 
