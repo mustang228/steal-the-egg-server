@@ -303,48 +303,80 @@ AVATARS = [
 # =========================================================
 # CHESTS
 # =========================================================
+#
+# 1. 📦 Обычный       - 200
+# 2. 🥈 Серебряный    - 400
+# 3. 🥇 Золотой       - 700
+# 4. 🌌 Космический   - 1300
+# 5. 👑 Легендарный   - 2600
+# 6. 🔥 Огненный      - 4000
+# 7. ❄️ Ледяной       - 6000
+# 8. ⚡ Молниевой     - 9000
+# 9. 🌑 Тёмный        - 13000
+# 10. 🌌 Божественный - 20000
+#
+# Третье значение = шанс выпадения яйца.
+#
 
 CHESTS = {
     1: (
-        '🪵 Деревянный сундук',
-        100,
-        0.8
-    ),
-
-    2: (
-        '🥇 Золотой сундук',
-        350,
+        '📦 Обычный сундук',
+        200,
         1.5
     ),
 
+    2: (
+        '🥈 Серебряный сундук',
+        400,
+        2.5
+    ),
+
     3: (
-        '💎 Алмазный сундук',
-        900,
-        3.0
+        '🥇 Золотой сундук',
+        700,
+        4.0
     ),
 
     4: (
         '🌌 Космический сундук',
-        2000,
-        5.0
+        1300,
+        6.0
     ),
 
     5: (
-        '👑 Королевский сундук',
-        5000,
+        '👑 Легендарный сундук',
+        2600,
         8.0
     ),
 
     6: (
-        '🌑 Тёмный сундук',
-        10000,
-        12.0
+        '🔥 Огненный сундук',
+        4000,
+        10.0
     ),
 
     7: (
-        '🐾 Сундук питомца',
-        2500,
-        0.0
+        '❄️ Ледяной сундук',
+        6000,
+        12.0
+    ),
+
+    8: (
+        '⚡ Молниевой сундук',
+        9000,
+        14.0
+    ),
+
+    9: (
+        '🌑 Тёмный сундук',
+        13000,
+        17.0
+    ),
+
+    10: (
+        '🌌 Божественный сундук',
+        20000,
+        20.0
     ),
 }
 
@@ -1222,7 +1254,6 @@ def tap():
 
     now = time.time()
 
-    # Один запрос = один реальный тап.
     old = [
         timestamp
         for timestamp
@@ -1877,7 +1908,10 @@ def tic_start():
         ok=True,
 
         board=
-            tic[uid]
+            tic[uid],
+
+        result=
+            'continue'
     )
 
 
@@ -1996,6 +2030,7 @@ def tic_move():
             'Клетка уже занята.'
         )
 
+    # Игрок
     board[index] = 'X'
 
     result = winner(
@@ -2020,6 +2055,7 @@ def tic_move():
             10
         )
 
+    # Компьютер
     empty = [
         position
         for position, value
@@ -2029,8 +2065,12 @@ def tic_move():
 
     if empty:
 
+        computer_position = random.choice(
+            empty
+        )
+
         board[
-            random.choice(empty)
+            computer_position
         ] = 'O'
 
     result = winner(
@@ -2070,6 +2110,10 @@ def tic_move():
 # =========================================================
 # EGGS SHOP
 # =========================================================
+#
+# Серверную систему оставляем.
+# Сам магазин яиц уберём из интерфейса отдельно.
+#
 
 @app.get('/api/eggs')
 def eggs():
@@ -2589,8 +2633,6 @@ def leaderboard():
             player
         )
 
-    # Считаем место без отдельной
-    # функции get_player_rank().
     all_players = database.get_all_players()
 
     all_players = [
@@ -2649,17 +2691,7 @@ def leaderboard():
 # SET AVATAR
 # =========================================================
 
-@app.post('/api/profile/avatar')
-def set_avatar():
-
-    u, f = auth()
-
-    if f:
-        return f
-
-    uid = int(
-        u['id']
-    )
+def save_avatar_for_user(uid):
 
     avatar = str(
         (request.json or {}).get(
@@ -2688,6 +2720,49 @@ def set_avatar():
 
         data=
             snap(uid)
+    )
+
+
+@app.post('/api/profile/avatar')
+def set_avatar():
+
+    u, f = auth()
+
+    if f:
+        return f
+
+    uid = int(
+        u['id']
+    )
+
+    return save_avatar_for_user(
+        uid
+    )
+
+
+# =========================================================
+# AVATAR COMPATIBILITY ROUTE
+# =========================================================
+#
+# Старый script.js использовал /api/avatar.
+# Оставляем этот маршрут, чтобы аватар работал
+# даже до изменения frontend.
+#
+
+@app.post('/api/avatar')
+def set_avatar_compatibility():
+
+    u, f = auth()
+
+    if f:
+        return f
+
+    uid = int(
+        u['id']
+    )
+
+    return save_avatar_for_user(
+        uid
     )
 
 
@@ -2869,7 +2944,7 @@ def tasks():
                     'egg',
 
                 'title':
-                    '🥚 Купить 1 яйцо',
+                    '🥚 Получить 1 яйцо',
 
                 'progress':
                     min(
@@ -3134,6 +3209,95 @@ def api_chests():
 
 
 # =========================================================
+# BUY CHEST
+# =========================================================
+
+@app.post('/api/chests/buy')
+def api_chest_buy():
+
+    u, f = auth()
+
+    if f:
+        return f
+
+    uid = int(
+        u['id']
+    )
+
+    try:
+
+        chest_id = int(
+            (request.json or {}).get(
+                'chest_id'
+            )
+        )
+
+    except (
+        TypeError,
+        ValueError
+    ):
+
+        return json_error(
+            'Неверный сундук.'
+        )
+
+    if chest_id not in CHESTS:
+
+        return json_error(
+            'Такого сундука нет.'
+        )
+
+    price = int(
+        CHESTS[chest_id][1]
+    )
+
+    if not database.remove_egg_coins(
+        uid,
+        price
+    ):
+
+        return json_error(
+            f'Недостаточно Egg Coins. '
+            f'Нужно {price} 🥚.'
+        )
+
+    database.add_chest(
+        uid,
+        chest_id
+    )
+
+    add_pass_xp(
+        uid,
+        10
+    )
+
+    add_xp(
+        uid,
+        10
+    )
+
+    return jsonify(
+
+        ok=True,
+
+        chest={
+
+            'id':
+                chest_id,
+
+            'name':
+                CHESTS[chest_id][0],
+
+            'price':
+                price
+        },
+
+        data=
+            snap(uid)
+    )
+
+
+# =========================================================
 # OPEN CHEST
 # =========================================================
 
@@ -3172,25 +3336,26 @@ def api_chest_open():
             'Такого сундука нет.'
         )
 
-    price = CHESTS[
-        chest_id
-    ][1]
-
-    if not database.remove_egg_coins(
+    # Сначала проверяем, есть ли такой сундук
+    # у игрока.
+    if not database.remove_chest(
         uid,
-        price
+        chest_id
     ):
 
         return json_error(
-            'Недостаточно Egg Coins.'
+            'У тебя нет этого сундука.'
         )
 
     # =====================================================
-    # PET CHEST
+    # PET REWARD
     # =====================================================
+    #
+    # Божественный сундук имеет шанс дать питомца.
+    #
 
     if (
-        chest_id == 7
+        chest_id == 10
         and random.random() < 0.70
     ):
 
@@ -3792,14 +3957,6 @@ def api_market_buy():
         result['egg_id']
     )
 
-    progress = database.get_daily_tasks(
-        uid
-    )
-
-    # Задание "рынок" находится
-    # в отдельной системе только в старом
-    # server.py, поэтому здесь увеличиваем
-    # обычный прогресс получения яйца.
     database.add_task_egg(
         uid
     )
@@ -4233,10 +4390,6 @@ def api_pass():
         state
     )
 
-    claimed_rows = []
-
-    # Получаем claim-состояния через DB-функцию
-    # проверки конкретного уровня.
     levels = []
 
     for level in range(
