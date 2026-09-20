@@ -144,11 +144,141 @@ def init_database():
     """)
 
     # =====================================================
-    # MIGRATION
+    # TABLE STRUCTURE MIGRATION
     # =====================================================
 
-    # Если players.db уже существовала,
-    # добавляем недостающие поля.
+    def has_column(table_name, column_name):
+
+        rows = cur.execute(
+            f"PRAGMA table_info({table_name})"
+        ).fetchall()
+
+        return any(
+            row["name"] == column_name
+            for row in rows
+        )
+
+    # -----------------------------------------------------
+    # PLAYER EGGS
+    # -----------------------------------------------------
+
+    if not has_column("player_eggs", "id"):
+
+        print("Миграция player_eggs: добавляем id")
+
+        cur.execute("""
+            ALTER TABLE player_eggs
+            RENAME TO player_eggs_old
+        """)
+
+        cur.execute("""
+            CREATE TABLE player_eggs (
+
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+
+                user_id INTEGER NOT NULL,
+
+                egg_id INTEGER NOT NULL
+            )
+        """)
+
+        cur.execute("""
+            INSERT INTO player_eggs (
+                user_id,
+                egg_id
+            )
+            SELECT
+                user_id,
+                egg_id
+            FROM player_eggs_old
+        """)
+
+        cur.execute("""
+            DROP TABLE player_eggs_old
+        """)
+
+    # -----------------------------------------------------
+    # PLAYER ITEMS
+    # -----------------------------------------------------
+
+    if not has_column("player_items", "id"):
+
+        print("Миграция player_items: добавляем id")
+
+        cur.execute("""
+            ALTER TABLE player_items
+            RENAME TO player_items_old
+        """)
+
+        cur.execute("""
+            CREATE TABLE player_items (
+
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+
+                user_id INTEGER NOT NULL,
+
+                item_id INTEGER NOT NULL
+            )
+        """)
+
+        cur.execute("""
+            INSERT INTO player_items (
+                user_id,
+                item_id
+            )
+            SELECT
+                user_id,
+                item_id
+            FROM player_items_old
+        """)
+
+        cur.execute("""
+            DROP TABLE player_items_old
+        """)
+
+    # -----------------------------------------------------
+    # ACHIEVEMENTS
+    # -----------------------------------------------------
+
+    if not has_column("achievements", "id"):
+
+        print("Миграция achievements: добавляем id")
+
+        cur.execute("""
+            ALTER TABLE achievements
+            RENAME TO achievements_old
+        """)
+
+        cur.execute("""
+            CREATE TABLE achievements (
+
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+
+                user_id INTEGER NOT NULL,
+
+                achievement_id INTEGER NOT NULL
+            )
+        """)
+
+        cur.execute("""
+            INSERT INTO achievements (
+                user_id,
+                achievement_id
+            )
+            SELECT
+                user_id,
+                achievement_id
+            FROM achievements_old
+        """)
+
+        cur.execute("""
+            DROP TABLE achievements_old
+        """)
+
+    # =====================================================
+    # PLAYERS MIGRATION
+    # =====================================================
+
     cur.execute("""
         PRAGMA table_info(players)
     """)
@@ -209,6 +339,10 @@ def init_database():
     for column, query in migrations.items():
 
         if column not in columns:
+
+            print(
+                f"Миграция players: добавляем {column}"
+            )
 
             cur.execute(query)
 
@@ -552,7 +686,9 @@ def get_egg_count(
 
     conn.close()
 
-    return int(row["count"])
+    return int(
+        row["count"]
+    )
 
 
 def remove_one_egg(
@@ -608,7 +744,9 @@ def get_total_eggs(user_id):
 
     conn.close()
 
-    return int(row["count"])
+    return int(
+        row["count"]
+    )
 
 
 # =========================================================
@@ -753,6 +891,7 @@ def update_login(user_id):
         return
 
     last_login = row["last_login"]
+
     streak = int(
         row["login_streak"]
     )
@@ -783,7 +922,7 @@ def update_login(user_id):
 
                 streak = 1
 
-        except:
+        except Exception:
 
             streak = 1
 
@@ -885,6 +1024,7 @@ def get_daily_bonus_date(user_id):
     conn.close()
 
     if not row:
+
         return None
 
     return row["daily_bonus_date"]
@@ -953,7 +1093,6 @@ def get_daily_tasks(user_id):
             int(user_id)
         ))
 
-        # Удаляем старые отметки выполнения заданий.
         conn.execute("""
             DELETE FROM daily_task_claims
             WHERE user_id = ?
@@ -964,7 +1103,6 @@ def get_daily_tasks(user_id):
         ))
 
         conn.commit()
-
         conn.close()
 
         return 0, 0, 0
@@ -1205,7 +1343,9 @@ def get_item_count(
 
     conn.close()
 
-    return int(row["count"])
+    return int(
+        row["count"]
+    )
 
 
 def remove_item(
@@ -1295,6 +1435,7 @@ def get_avatar(user_id):
     conn.close()
 
     if not row:
+
         return "🥚"
 
     return (
