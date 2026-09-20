@@ -25,6 +25,11 @@ CORS(app)
 BOT_TOKEN = os.getenv("BOT_TOKEN", "")
 PORT = int(os.getenv("PORT", "10000"))
 
+# Проверяем переменную при запуске.
+# Сам токен НЕ выводим.
+print("BOT_TOKEN найден:", bool(BOT_TOKEN))
+print("BOT_TOKEN длина:", len(BOT_TOKEN))
+
 WITHDRAWAL_BOT = "https://t.me/stealtheegg_vyvod_bot"
 
 
@@ -246,24 +251,44 @@ def validate_telegram_data(init_data):
     if not BOT_TOKEN:
         raise ValueError("BOT_TOKEN не настроен")
 
-    data = dict(parse_qsl(init_data, keep_blank_values=True))
+    data = dict(
+        parse_qsl(
+            init_data,
+            keep_blank_values=True
+        )
+    )
 
-    received_hash = data.pop("hash", None)
+    received_hash = data.pop(
+        "hash",
+        None
+    )
 
     if not received_hash:
         raise ValueError("Нет hash")
 
-    auth_date = int(data.get("auth_date", "0"))
+    try:
+        auth_date = int(
+            data.get(
+                "auth_date",
+                "0"
+            )
+        )
+    except ValueError:
+        raise ValueError("Неверный auth_date")
 
     if not auth_date:
         raise ValueError("Нет auth_date")
 
     if time.time() - auth_date > 86400:
-        raise ValueError("Telegram данные устарели")
+        raise ValueError(
+            "Telegram данные устарели"
+        )
 
     data_check_string = "\n".join(
         f"{key}={value}"
-        for key, value in sorted(data.items())
+        for key, value in sorted(
+            data.items()
+        )
     )
 
     secret_key = hmac.new(
@@ -282,12 +307,26 @@ def validate_telegram_data(init_data):
         calculated_hash,
         received_hash
     ):
-        raise ValueError("Неверная Telegram подпись")
+        raise ValueError(
+            "Неверная Telegram подпись"
+        )
 
-    user = json.loads(data.get("user", "{}"))
+    try:
+        user = json.loads(
+            data.get(
+                "user",
+                "{}"
+            )
+        )
+    except json.JSONDecodeError:
+        raise ValueError(
+            "Неверные данные пользователя Telegram"
+        )
 
     if not user:
-        raise ValueError("Не найден пользователь Telegram")
+        raise ValueError(
+            "Не найден пользователь Telegram"
+        )
 
     return user
 
@@ -299,9 +338,13 @@ def get_current_user():
         ""
     )
 
-    user = validate_telegram_data(init_data)
+    user = validate_telegram_data(
+        init_data
+    )
 
-    user_id = int(user["id"])
+    user_id = int(
+        user["id"]
+    )
 
     database.ensure_player(
         user_id,
@@ -309,8 +352,12 @@ def get_current_user():
         user.get("first_name")
     )
 
-    if database.is_blocked(user_id):
-        raise ValueError("Пользователь заблокирован")
+    if database.is_blocked(
+        user_id
+    ):
+        raise ValueError(
+            "Пользователь заблокирован"
+        )
 
     return user
 
@@ -321,6 +368,7 @@ def require_user():
         return get_current_user()
 
     except Exception as e:
+
         return jsonify({
             "ok": False,
             "error": str(e)
@@ -328,7 +376,6 @@ def require_user():
 
 
 def uid_from_user(user):
-
     return int(user["id"])
 
 
@@ -350,7 +397,9 @@ def activate_item(user_id, item_id):
     item_id = int(item_id)
 
     if item_id not in ITEMS:
-        raise ValueError("Предмет не найден")
+        raise ValueError(
+            "Предмет не найден"
+        )
 
     count = database.get_item_count(
         user_id,
@@ -358,7 +407,9 @@ def activate_item(user_id, item_id):
     )
 
     if count <= 0:
-        raise ValueError("У тебя нет этого предмета")
+        raise ValueError(
+            "У тебя нет этого предмета"
+        )
 
     database.remove_item(
         user_id,
@@ -381,7 +432,9 @@ def is_item_active(user_id, item_id):
         {}
     )
 
-    expires = user_items.get(item_id)
+    expires = user_items.get(
+        item_id
+    )
 
     if not expires:
         return False
@@ -400,7 +453,10 @@ def is_item_active(user_id, item_id):
 
 def give_xp(user_id, amount):
 
-    if is_item_active(user_id, 3):
+    if is_item_active(
+        user_id,
+        3
+    ):
         amount *= 2
 
     return database.add_xp(
@@ -411,7 +467,10 @@ def give_xp(user_id, amount):
 
 def give_game_reward(user_id, amount):
 
-    if is_item_active(user_id, 2):
+    if is_item_active(
+        user_id,
+        2
+    ):
         amount += 1
 
     database.add_egg_coins(
@@ -542,11 +601,13 @@ def snap(user_id):
 
     for egg_id in player_eggs:
 
-        egg_id = int(egg_id)
+        egg_id = str(
+            int(egg_id)
+        )
 
-        egg_counts[str(egg_id)] = (
+        egg_counts[egg_id] = (
             egg_counts.get(
-                str(egg_id),
+                egg_id,
                 0
             ) + 1
         )
@@ -567,11 +628,10 @@ def snap(user_id):
         user_id
     )
 
-    # XP внутри уровня.
-    # 100 XP = один уровень.
+    # 100 XP = один уровень
     xp_required = 100
 
-    # XP в текущем уровне.
+    # XP внутри текущего уровня
     current_xp = xp % xp_required
 
     return {
@@ -591,11 +651,8 @@ def snap(user_id):
         "streak": streak,
 
         "tasks": {
-
             "taps": taps,
-
             "games": games,
-
             "eggs": eggs
         },
 
@@ -628,7 +685,9 @@ def api_init():
 
         user = get_current_user()
 
-        user_id = uid_from_user(user)
+        user_id = uid_from_user(
+            user
+        )
 
         database.update_login(
             user_id
@@ -651,8 +710,10 @@ def api_init():
                 user_id
             )
 
-        new_achievements = check_achievements(
-            user_id
+        new_achievements = (
+            check_achievements(
+                user_id
+            )
         )
 
         return jsonify({
@@ -660,6 +721,10 @@ def api_init():
             "ok": True,
 
             "user": user,
+
+            "username": get_username(
+                user
+            ),
 
             "login": {
                 "claimed": not claimed,
@@ -694,10 +759,15 @@ def api_state():
         user = get_current_user()
 
         return jsonify({
+
             "ok": True,
-            "data": snap(
-                uid_from_user(user)
-            )
+
+            "data":
+                snap(
+                    uid_from_user(
+                        user
+                    )
+                )
         })
 
     except Exception as e:
@@ -719,7 +789,9 @@ def api_tap():
 
         user = get_current_user()
 
-        user_id = uid_from_user(user)
+        user_id = uid_from_user(
+            user
+        )
 
         now = time.time()
 
@@ -729,7 +801,9 @@ def api_tap():
         )
 
         if now - previous < 0.05:
-            raise ValueError("Слишком быстро")
+            raise ValueError(
+                "Слишком быстро"
+            )
 
         last_tap[user_id] = now
 
@@ -757,8 +831,10 @@ def api_tap():
             ) + 1
         )
 
-        new_achievements = check_achievements(
-            user_id
+        new_achievements = (
+            check_achievements(
+                user_id
+            )
         )
 
         return jsonify({
@@ -793,7 +869,9 @@ def api_exchange():
 
         user = get_current_user()
 
-        user_id = uid_from_user(user)
+        user_id = uid_from_user(
+            user
+        )
 
         if database.get_tap_coins(
             user_id
@@ -842,7 +920,9 @@ def guess_start():
 
         user = get_current_user()
 
-        user_id = uid_from_user(user)
+        user_id = uid_from_user(
+            user
+        )
 
         guess_games[user_id] = {
 
@@ -855,6 +935,7 @@ def guess_start():
         }
 
         return jsonify({
+
             "ok": True
         })
 
@@ -874,7 +955,9 @@ def guess_try():
 
         user = get_current_user()
 
-        user_id = uid_from_user(user)
+        user_id = uid_from_user(
+            user
+        )
 
         game = guess_games.get(
             user_id
@@ -890,15 +973,19 @@ def guess_try():
         ) or {}
 
         try:
+
             guess = int(
                 data.get("guess")
             )
-        except:
+
+        except Exception:
+
             raise ValueError(
                 "Введи число от 1 до 20"
             )
 
         if guess < 1 or guess > 20:
+
             raise ValueError(
                 "Число должно быть от 1 до 20"
             )
@@ -978,8 +1065,7 @@ def guess_try():
         hint = (
             "Больше"
             if guess < number
-            else
-            "Меньше"
+            else "Меньше"
         )
 
         return jsonify({
@@ -1060,7 +1146,9 @@ def math_start():
 
         user = get_current_user()
 
-        user_id = uid_from_user(user)
+        user_id = uid_from_user(
+            user
+        )
 
         game = create_math_game(
             user_id
@@ -1089,7 +1177,9 @@ def math_answer():
 
         user = get_current_user()
 
-        user_id = uid_from_user(user)
+        user_id = uid_from_user(
+            user
+        )
 
         game = math_games.get(
             user_id
@@ -1106,23 +1196,22 @@ def math_answer():
         ) or {}
 
         try:
+
             answer = int(
                 data.get("answer")
             )
-        except:
+
+        except Exception:
+
             raise ValueError(
                 "Введи число"
             )
 
         correct_answer = game["answer"]
 
-        # =============================================
-        # НЕПРАВИЛЬНЫЙ ОТВЕТ
-        # =============================================
-
+        # Неправильный ответ
         if answer != correct_answer:
 
-            # Сразу создаём новый пример
             new_game = create_math_game(
                 user_id
             )
@@ -1133,12 +1222,13 @@ def math_answer():
 
                 "result": "lose",
 
-                "correct": correct_answer,
+                "correct":
+                    correct_answer,
 
                 "reward": 0,
 
                 "message":
-                    "❌ Неправильно! Попробуй новый пример.",
+                    "❌ Неправильно! Новый пример:",
 
                 "question":
                     new_game["question"],
@@ -1147,10 +1237,7 @@ def math_answer():
                     new_game["question"]
             })
 
-        # =============================================
-        # ПРАВИЛЬНЫЙ ОТВЕТ
-        # =============================================
-
+        # Правильный ответ
         reward = 10
 
         give_game_reward(
@@ -1175,7 +1262,6 @@ def math_answer():
             )
         )
 
-        # После правильного ответа игра заканчивается.
         math_games.pop(
             user_id,
             None
@@ -1230,14 +1316,14 @@ def check_tic_winner(board):
     for a, b, c in combinations:
 
         if (
-            board[a] != " "
+            board[a] != ""
             and board[a] == board[b]
             and board[b] == board[c]
         ):
             return board[a]
 
     if all(
-        cell != " "
+        cell != ""
         for cell in board
     ):
         return "draw"
@@ -1252,20 +1338,22 @@ def tic_start():
 
         user = get_current_user()
 
-        user_id = uid_from_user(user)
+        user_id = uid_from_user(
+            user
+        )
 
         tic_games[user_id] = {
 
             "board": [
-                " ",
-                " ",
-                " ",
-                " ",
-                " ",
-                " ",
-                " ",
-                " ",
-                " "
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                ""
             ]
         }
 
@@ -1292,13 +1380,16 @@ def tic_move():
 
         user = get_current_user()
 
-        user_id = uid_from_user(user)
+        user_id = uid_from_user(
+            user
+        )
 
         game = tic_games.get(
             user_id
         )
 
         if not game:
+
             raise ValueError(
                 "Сначала начни игру"
             )
@@ -1308,22 +1399,27 @@ def tic_move():
         ) or {}
 
         try:
+
             index = int(
                 data.get("index")
             )
-        except:
+
+        except Exception:
+
             raise ValueError(
                 "Неверная клетка"
             )
 
         if index < 0 or index > 8:
+
             raise ValueError(
                 "Неверная клетка"
             )
 
         board = game["board"]
 
-        if board[index] != " ":
+        if board[index] != "":
+
             raise ValueError(
                 "Эта клетка уже занята"
             )
@@ -1403,7 +1499,7 @@ def tic_move():
             i
             for i, cell
             in enumerate(board)
-            if cell == " "
+            if cell == ""
         ]
 
         if empty:
@@ -1489,7 +1585,9 @@ def api_eggs():
 
         user = get_current_user()
 
-        user_id = uid_from_user(user)
+        user_id = uid_from_user(
+            user
+        )
 
         owned_list = (
             database.get_player_eggs(
@@ -1501,11 +1599,13 @@ def api_eggs():
 
         for egg_id in owned_list:
 
-            egg_id = str(egg_id)
+            key = str(
+                int(egg_id)
+            )
 
-            owned[egg_id] = (
+            owned[key] = (
                 owned.get(
-                    egg_id,
+                    key,
                     0
                 ) + 1
             )
@@ -1518,11 +1618,14 @@ def api_eggs():
 
                 "id": egg_id,
 
-                "name": egg["name"],
+                "name":
+                    egg["name"],
 
-                "price": egg["price"],
+                "price":
+                    egg["price"],
 
-                "rarity": egg["rarity"]
+                "rarity":
+                    egg["rarity"]
             }
 
         return jsonify({
@@ -1551,24 +1654,26 @@ def buy_egg():
 
         user = get_current_user()
 
-        user_id = uid_from_user(user)
+        user_id = uid_from_user(
+            user
+        )
 
         data = request.get_json(
             silent=True
         ) or {}
 
         try:
+
             egg_id = int(
                 data.get("egg_id")
             )
-        except:
+
+        except Exception:
+
             raise ValueError(
                 "Неверный ID яйца"
             )
 
-        # ВАЖНО:
-        # Используем именно выбранный ID,
-        # а не цену или позицию списка.
         egg = EGGS.get(
             egg_id
         )
@@ -1594,7 +1699,6 @@ def buy_egg():
             price
         )
 
-        # Реально добавляем выбранное яйцо
         database.add_egg(
             user_id,
             egg_id
@@ -1618,9 +1722,11 @@ def buy_egg():
 
                 "id": egg_id,
 
-                "name": egg["name"],
+                "name":
+                    egg["name"],
 
-                "price": price,
+                "price":
+                    price,
 
                 "rarity":
                     egg["rarity"]
@@ -1652,17 +1758,22 @@ def open_egg():
 
         user = get_current_user()
 
-        user_id = uid_from_user(user)
+        user_id = uid_from_user(
+            user
+        )
 
         data = request.get_json(
             silent=True
         ) or {}
 
         try:
+
             egg_id = int(
                 data.get("egg_id")
             )
-        except:
+
+        except Exception:
+
             raise ValueError(
                 "Неверный ID яйца"
             )
@@ -1739,7 +1850,9 @@ def api_items():
 
         user = get_current_user()
 
-        user_id = uid_from_user(user)
+        user_id = uid_from_user(
+            user
+        )
 
         result = {}
 
@@ -1796,7 +1909,9 @@ def buy_item():
 
         user = get_current_user()
 
-        user_id = uid_from_user(user)
+        user_id = uid_from_user(
+            user
+        )
 
         data = request.get_json(
             silent=True
@@ -1859,7 +1974,9 @@ def use_item():
 
         user = get_current_user()
 
-        user_id = uid_from_user(user)
+        user_id = uid_from_user(
+            user
+        )
 
         data = request.get_json(
             silent=True
@@ -1901,12 +2018,13 @@ def api_achievements():
 
         user = get_current_user()
 
-        user_id = uid_from_user(user)
+        user_id = uid_from_user(
+            user
+        )
 
         unlocked = {
             a["achievement_id"]
-            for a
-            in database.get_achievements(
+            for a in database.get_achievements(
                 user_id
             )
         }
@@ -1960,7 +2078,9 @@ def leaderboard():
 
         user = get_current_user()
 
-        user_id = uid_from_user(user)
+        user_id = uid_from_user(
+            user
+        )
 
         players = database.get_top_players(
             10
@@ -2060,7 +2180,9 @@ def get_avatar_api():
 
         user = get_current_user()
 
-        user_id = uid_from_user(user)
+        user_id = uid_from_user(
+            user
+        )
 
         return jsonify({
 
@@ -2090,14 +2212,19 @@ def set_avatar_api():
 
         user = get_current_user()
 
-        user_id = uid_from_user(user)
+        user_id = uid_from_user(
+            user
+        )
 
         data = request.get_json(
             silent=True
         ) or {}
 
         avatar = str(
-            data.get("avatar", "")
+            data.get(
+                "avatar",
+                ""
+            )
         )
 
         if avatar not in AVATARS:
@@ -2115,7 +2242,8 @@ def set_avatar_api():
 
             "ok": True,
 
-            "avatar": avatar,
+            "avatar":
+                avatar,
 
             "data":
                 snap(user_id)
@@ -2140,7 +2268,9 @@ def daily_bonus():
 
         user = get_current_user()
 
-        user_id = uid_from_user(user)
+        user_id = uid_from_user(
+            user
+        )
 
         today = date.today().isoformat()
 
@@ -2195,7 +2325,9 @@ def daily_tasks():
 
         user = get_current_user()
 
-        user_id = uid_from_user(user)
+        user_id = uid_from_user(
+            user
+        )
 
         taps, games, eggs = (
             database.get_daily_tasks(
@@ -2267,7 +2399,9 @@ def claim_task():
 
         user = get_current_user()
 
-        user_id = uid_from_user(user)
+        user_id = uid_from_user(
+            user
+        )
 
         data = request.get_json(
             silent=True
@@ -2368,7 +2502,9 @@ def boss():
 
         user = get_current_user()
 
-        user_id = uid_from_user(user)
+        user_id = uid_from_user(
+            user
+        )
 
         return jsonify({
 
@@ -2402,7 +2538,9 @@ def boss_attack():
 
         user = get_current_user()
 
-        user_id = uid_from_user(user)
+        user_id = uid_from_user(
+            user
+        )
 
         now = time.time()
 
@@ -2497,7 +2635,9 @@ def withdrawal():
 
         user = get_current_user()
 
-        user_id = uid_from_user(user)
+        user_id = uid_from_user(
+            user
+        )
 
         player_eggs = (
             database.get_player_eggs(
@@ -2509,12 +2649,16 @@ def withdrawal():
 
         for egg_id in player_eggs:
 
-            egg_id = int(egg_id)
+            egg_id = int(
+                egg_id
+            )
 
             if egg_id not in EGGS:
                 continue
 
-            key = str(egg_id)
+            key = str(
+                egg_id
+            )
 
             if key not in eggs:
 
@@ -2532,6 +2676,29 @@ def withdrawal():
                 }
 
             eggs[key]["count"] += 1
+
+        total_eggs = sum(
+            item["count"]
+            for item in eggs.values()
+        )
+
+        shop = {}
+
+        for egg_id, egg in EGGS.items():
+
+            shop[str(egg_id)] = {
+
+                "id": egg_id,
+
+                "name":
+                    egg["name"],
+
+                "price":
+                    egg["price"],
+
+                "rarity":
+                    egg["rarity"]
+            }
 
         return jsonify({
 
@@ -2552,8 +2719,13 @@ def withdrawal():
 
             "eggs": eggs,
 
+            "shop": shop,
+
+            "total_eggs":
+                total_eggs,
+
             "total":
-                len(player_eggs)
+                total_eggs
         })
 
     except Exception as e:
