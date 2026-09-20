@@ -4,37 +4,39 @@ import hmac
 import hashlib
 import json
 import random
-
+import sqlite3
 from datetime import date
 from urllib.parse import parse_qsl
 
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 
+import sys
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import database
 
 
-app = Flask(__name__)
-CORS(app)
-
-
 # =========================================================
-# CONFIG
+# SERVER
 # =========================================================
 
-BOT_TOKEN = os.getenv("BOT_TOKEN", "")
-PORT = int(os.getenv("PORT", "10000"))
+app = Flask(
+    __name__,
+    static_folder=os.path.dirname(os.path.abspath(__file__)),
+    static_url_path=''
+)
 
-# Диагностика.
-# Сам токен НЕ выводим.
-print("========================================")
-print("STEAL THE EGG SERVER")
-print("BOT_TOKEN найден:", bool(BOT_TOKEN))
-print("BOT_TOKEN длина:", len(BOT_TOKEN))
-print("PORT:", PORT)
-print("========================================")
+CORS(app, resources={
+    r'/api/*': {
+        'origins': '*'
+    }
+})
 
-WITHDRAWAL_BOT = "https://t.me/stealthegg_vyvod_bot"
+
+BOT_TOKEN = os.getenv('BOT_TOKEN', '')
+PORT = int(os.getenv('PORT', '8080'))
+
+WITHDRAWAL_BOT = 'https://t.me/stealthegg_vyvod_bot'
 
 
 # =========================================================
@@ -42,65 +44,26 @@ WITHDRAWAL_BOT = "https://t.me/stealthegg_vyvod_bot"
 # =========================================================
 
 EGGS = {
-    1: {
-        "name": "🥚 Обычное яйцо",
-        "price": 100,
-        "rarity": "Обычное"
-    },
-
-    2: {
-        "name": "🥈 Серебряное яйцо",
-        "price": 600,
-        "rarity": "Серебряное"
-    },
-
-    3: {
-        "name": "🥇 Золотое яйцо",
-        "price": 700,
-        "rarity": "Золотое"
-    },
-
-    4: {
-        "name": "💎 Алмазное яйцо",
-        "price": 800,
-        "rarity": "Алмазное"
-    },
-
-    5: {
-        "name": "🔥 Огненное яйцо",
-        "price": 900,
-        "rarity": "Огненное"
-    },
-
-    6: {
-        "name": "❄️ Ледяное яйцо",
-        "price": 1000,
-        "rarity": "Ледяное"
-    },
-
-    7: {
-        "name": "🌌 Космическое яйцо",
-        "price": 1100,
-        "rarity": "Космическое"
-    },
-
-    8: {
-        "name": "👑 Королевское яйцо",
-        "price": 1200,
-        "rarity": "Королевское"
-    },
-
-    9: {
-        "name": "⚡ Молниеносное яйцо",
-        "price": 1300,
-        "rarity": "Молниеносное"
-    },
-
-    10: {
-        "name": "🌑 Тёмное яйцо",
-        "price": 1400,
-        "rarity": "Тёмное"
-    }
+    1: ('🥚 Обычное яйцо', 100, '⚪ Обычное'),
+    2: ('🥈 Серебряное яйцо', 600, '🟢 Необычное'),
+    3: ('🥇 Золотое яйцо', 900, '🔵 Редкое'),
+    4: ('💎 Алмазное яйцо', 1400, '🟣 Эпическое'),
+    5: ('🔥 Огненное яйцо', 1800, '🟣 Эпическое'),
+    6: ('❄️ Ледяное яйцо', 2300, '🟡 Легендарное'),
+    7: ('🌌 Космическое яйцо', 3000, '🟡 Легендарное'),
+    8: ('👑 Королевское яйцо', 4500, '🔴 Мифическое'),
+    9: ('⚡ Молниевое яйцо', 6000, '🔴 Мифическое'),
+    10: ('🌑 Тёмное яйцо', 8000, '🔴 Мифическое'),
+    11: ('☀️ Солнечное яйцо', 11000, '💠 Божественное'),
+    12: ('🪐 Галактическое яйцо', 15000, '💠 Божественное'),
+    13: ('🧿 Проклятое яйцо', 22000, '🌈 Секретное'),
+    14: ('🪽 Небесное яйцо', 30000, '🌈 Секретное'),
+    15: ('👾 Глитч-яйцо', 50000, '🌈 Секретное'),
+    16: ('🌋 Магмовое яйцо', 9500, '🟡 Легендарное'),
+    17: ('🌊 Океанское яйцо', 7000, '🔴 Мифическое'),
+    18: ('🌳 Древнее яйцо', 12500, '💠 Божественное'),
+    19: ('👻 Призрачное яйцо', 5500, '🔴 Мифическое'),
+    20: ('🩸 Тёмно-красное яйцо', 18000, '💠 Божественное'),
 }
 
 
@@ -109,26 +72,23 @@ EGGS = {
 # =========================================================
 
 ITEMS = {
-    1: {
-        "name": "⚡ Tap Booster",
-        "description": "+2 Tap Coins за тап",
-        "price": 150,
-        "active_seconds": 600
-    },
+    1: (
+        '⚡ Бустер тапов',
+        150,
+        '+2 Tap Coins за тап на 10 минут'
+    ),
 
-    2: {
-        "name": "🥚 Egg Coin Booster",
-        "description": "+1 Egg Coin за награды мини-игр",
-        "price": 250,
-        "active_seconds": 600
-    },
+    2: (
+        '🥚 Бустер Egg Coins',
+        250,
+        '+1 Egg Coin к наградам игр на 10 минут'
+    ),
 
-    3: {
-        "name": "⭐ XP Booster",
-        "description": "2x XP",
-        "price": 200,
-        "active_seconds": 600
-    }
+    3: (
+        '🎁 XP Бустер',
+        200,
+        'В 2 раза больше XP на 10 минут'
+    ),
 }
 
 
@@ -136,54 +96,54 @@ ITEMS = {
 # ACHIEVEMENTS
 # =========================================================
 
-ACHIEVEMENTS = {
-    1: {
-        "name": "Первый тап",
-        "description": "Сделать первый тап",
-        "reward": 10
-    },
+ACH = {
+    1: (
+        '👆 Первый тап',
+        'Сделать первый тап',
+        10
+    ),
 
-    2: {
-        "name": "100 тапов",
-        "description": "Сделать 100 тапов",
-        "reward": 25
-    },
+    2: (
+        '💰 Богатей',
+        'Накопить 1000 Tap Coins',
+        25
+    ),
 
-    3: {
-        "name": "1000 тапов",
-        "description": "Сделать 1000 тапов",
-        "reward": 100
-    },
+    3: (
+        '🥚 Коллекционер',
+        'Собрать 5 яиц',
+        50
+    ),
 
-    4: {
-        "name": "Первое яйцо",
-        "description": "Купить первое яйцо",
-        "reward": 25
-    },
+    4: (
+        '🥚 Яичный мастер',
+        'Собрать 10 разных яиц',
+        100
+    ),
 
-    5: {
-        "name": "Игрок",
-        "description": "Сыграть 10 мини-игр",
-        "reward": 50
-    },
+    5: (
+        '🎮 Игрок',
+        'Сыграть 10 мини-игр',
+        50
+    ),
 
-    6: {
-        "name": "Уровень 5",
-        "description": "Достичь 5 уровня",
-        "reward": 100
-    },
+    6: (
+        '🔥 Серия',
+        'Получить серию 7 дней',
+        100
+    ),
 
-    7: {
-        "name": "Коллекционер",
-        "description": "Собрать 10 яиц",
-        "reward": 150
-    },
+    7: (
+        '⭐ Уровень 10',
+        'Достичь 10 уровня',
+        150
+    ),
 
-    8: {
-        "name": "Босс",
-        "description": "Нанести 1000 урона боссу",
-        "reward": 200
-    }
+    8: (
+        '👾 Охотник на боссов',
+        'Нанести 100 урона боссу',
+        100
+    ),
 }
 
 
@@ -192,48 +152,44 @@ ACHIEVEMENTS = {
 # =========================================================
 
 AVATARS = [
-    "🥚",
-    "🐣",
-    "🐥",
-    "🐔",
-    "🦆",
-    "🐧",
-    "🦉",
-    "🐲",
-    "👑",
-    "😎",
-    "🤖",
-    "👽",
-    "👾",
-    "🔥",
-    "💎",
-    "⚡"
+    '🥚',
+    '🐣',
+    '🐥',
+    '🐔',
+    '🦊',
+    '🐼',
+    '🐸',
+    '🐵',
+    '😎',
+    '🤖',
+    '👽',
+    '👾',
+    '🤑',
+    '🔥',
+    '⚡',
+    '💎',
+    '👑',
+    '🌌',
+    '🌑',
+    '🍀'
 ]
 
 
 # =========================================================
-# MEMORY
+# GAME MEMORY
 # =========================================================
 
-guess_games = {}
-math_games = {}
-tic_games = {}
+active = {}
+guess = {}
+math = {}
+tic = {}
 
 last_tap = {}
+last_game = {}
 last_boss = {}
+last_steal = {}
 
-active_items = {}
-
-tap_counter = {}
-game_counter = {}
-
-
-# =========================================================
-# BOSS
-# =========================================================
-
-BOSS_MAX_HP = 10000
-boss_hp = BOSS_MAX_HP
+boss_hp = 10000
 
 
 # =========================================================
@@ -242,97 +198,503 @@ boss_hp = BOSS_MAX_HP
 
 database.init_database()
 
+EXTRA_DB = getattr(
+    database,
+    'DB_PATH',
+    os.path.join(os.path.dirname(__file__), 'players.db')
+)
+
+
+# =========================================================
+# CHESTS
+# =========================================================
+
+CHESTS = {
+    1: ('🪵 Деревянный сундук', 100, 0.8),
+    2: ('🥇 Золотой сундук', 350, 1.5),
+    3: ('💎 Алмазный сундук', 900, 3.0),
+    4: ('🌌 Космический сундук', 2000, 5.0),
+    5: ('👑 Королевский сундук', 5000, 8.0),
+    6: ('🌑 Тёмный сундук', 10000, 12.0),
+    7: ('🐾 Сундук питомца', 2500, 0.0),
+}
+
+
+# =========================================================
+# PETS
+# =========================================================
+
+PETS = {
+    1: (
+        '🐹 Яичный хомяк',
+        '⚪ Обычное',
+        '+5% Egg Coins'
+    ),
+
+    2: (
+        '🐱 Космо-кот',
+        '🟢 Необычное',
+        '+8% Egg Coins'
+    ),
+
+    3: (
+        '🦊 Огненный лис',
+        '🔵 Редкое',
+        '+10% Egg Coins'
+    ),
+
+    4: (
+        '🐉 Маленький дракон',
+        '🟣 Эпическое',
+        '+15% Egg Coins'
+    ),
+
+    5: (
+        '🦄 Неоновый единорог',
+        '🟡 Легендарное',
+        '+20% Egg Coins'
+    ),
+
+    6: (
+        '👑 Королевский дракон',
+        '🔴 Мифическое',
+        '+30% Egg Coins'
+    ),
+
+    7: (
+        '👾 Глитч-питомец',
+        '💠 Божественное',
+        '+40% Egg Coins'
+    ),
+}
+
+
+PET_BONUS = {
+    '⚪ Обычное': 0.05,
+    '🟢 Необычное': 0.08,
+    '🔵 Редкое': 0.10,
+    '🟣 Эпическое': 0.15,
+    '🟡 Легендарное': 0.20,
+    '🔴 Мифическое': 0.30,
+    '💠 Божественное': 0.40,
+}
+
+
+# =========================================================
+# PASS
+# =========================================================
+
+PASS_MAX = 30
+PASS_XP = 100
+
+BOSS_MAX_HP = 100000
+
+
+# =========================================================
+# EXTRA DATABASE CONNECTION
+# =========================================================
+
+def extra_conn():
+    conn = sqlite3.connect(
+        EXTRA_DB,
+        timeout=30
+    )
+
+    conn.row_factory = sqlite3.Row
+
+    return conn
+
+
+# =========================================================
+# EXTRA DATABASE TABLES
+# =========================================================
+
+def init_extra():
+
+    conn = extra_conn()
+
+    conn.executescript("""
+        CREATE TABLE IF NOT EXISTS player_pets(
+            user_id INTEGER,
+            pet_id INTEGER,
+            active INTEGER DEFAULT 0,
+            PRIMARY KEY(user_id, pet_id)
+        );
+
+        CREATE TABLE IF NOT EXISTS market_listings(
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            seller_id INTEGER,
+            egg_id INTEGER,
+            price INTEGER,
+            created_at INTEGER,
+            sold INTEGER DEFAULT 0
+        );
+
+        CREATE TABLE IF NOT EXISTS chest_opens(
+            user_id INTEGER,
+            chest_id INTEGER,
+            count INTEGER DEFAULT 0,
+            PRIMARY KEY(user_id, chest_id)
+        );
+
+        CREATE TABLE IF NOT EXISTS boss_event(
+            id INTEGER PRIMARY KEY CHECK(id=1),
+            hp INTEGER,
+            max_hp INTEGER,
+            started_at INTEGER,
+            ends_at INTEGER,
+            reward_claimed INTEGER DEFAULT 0
+        );
+
+        CREATE TABLE IF NOT EXISTS boss_contributions(
+            user_id INTEGER PRIMARY KEY,
+            damage INTEGER DEFAULT 0
+        );
+
+        CREATE TABLE IF NOT EXISTS egg_pass(
+            user_id INTEGER PRIMARY KEY,
+            xp INTEGER DEFAULT 0,
+            level INTEGER DEFAULT 0
+        );
+
+        CREATE TABLE IF NOT EXISTS egg_pass_claims(
+            user_id INTEGER,
+            level INTEGER,
+            track TEXT,
+            PRIMARY KEY(user_id, level, track)
+        );
+
+        CREATE TABLE IF NOT EXISTS steal_log(
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            attacker_id INTEGER,
+            defender_id INTEGER,
+            egg_id INTEGER,
+            success INTEGER,
+            created_at INTEGER
+        );
+
+        CREATE TABLE IF NOT EXISTS egg_protection(
+            user_id INTEGER PRIMARY KEY,
+            until_ts INTEGER DEFAULT 0
+        );
+
+        CREATE TABLE IF NOT EXISTS extra_daily(
+            user_id INTEGER PRIMARY KEY,
+            task_date TEXT,
+            task_id TEXT,
+            target INTEGER,
+            progress INTEGER DEFAULT 0,
+            reward INTEGER DEFAULT 0,
+            claimed INTEGER DEFAULT 0
+        );
+    """)
+
+    conn.commit()
+    conn.close()
+
+
+init_extra()
+
+
+# =========================================================
+# PET BONUS
+# =========================================================
+
+def pet_bonus(uid):
+
+    conn = extra_conn()
+
+    row = conn.execute(
+        '''
+        SELECT pet_id
+        FROM player_pets
+        WHERE user_id=? AND active=1
+        ''',
+        (uid,)
+    ).fetchone()
+
+    conn.close()
+
+    if not row:
+        return 0
+
+    pet_id = int(row['pet_id'])
+
+    if pet_id not in PETS:
+        return 0
+
+    rarity = PETS[pet_id][1]
+
+    return PET_BONUS.get(rarity, 0)
+
+
+# =========================================================
+# EGG PASS XP
+# =========================================================
+
+def add_pass_xp(uid, amount):
+
+    conn = extra_conn()
+
+    row = conn.execute(
+        'SELECT xp FROM egg_pass WHERE user_id=?',
+        (uid,)
+    ).fetchone()
+
+    old_xp = int(row['xp']) if row else 0
+
+    xp = old_xp + int(amount)
+
+    level = min(
+        PASS_MAX,
+        xp // PASS_XP
+    )
+
+    conn.execute(
+        '''
+        INSERT INTO egg_pass(user_id, xp, level)
+        VALUES(?,?,?)
+
+        ON CONFLICT(user_id)
+        DO UPDATE SET
+            xp=excluded.xp,
+            level=excluded.level
+        ''',
+        (
+            uid,
+            xp,
+            level
+        )
+    )
+
+    conn.commit()
+    conn.close()
+
+
+# =========================================================
+# RANDOM EGG FROM CHEST
+# =========================================================
+
+def chest_egg():
+
+    ids = list(EGGS)
+
+    weights = [
+        52,
+        20,
+        10,
+        5,
+        4,
+        3,
+        2,
+        1.3,
+        0.8,
+        0.5,
+        0.2,
+        0.1,
+        0.05,
+        0.03,
+        0.02,
+        0.3,
+        0.25,
+        0.15,
+        0.1,
+        0.1
+    ]
+
+    return random.choices(
+        ids,
+        weights=weights,
+        k=1
+    )[0]
+
+
+# =========================================================
+# EXTRA DAILY
+# =========================================================
+
+def new_daily(uid):
+
+    today = date.today().isoformat()
+
+    conn = extra_conn()
+
+    row = conn.execute(
+        'SELECT * FROM extra_daily WHERE user_id=?',
+        (uid,)
+    ).fetchone()
+
+    if not row or row['task_date'] != today:
+
+        task = random.choice([
+            (
+                'tap',
+                '👆 Сделать 100 тапов',
+                100,
+                25
+            ),
+
+            (
+                'game',
+                '🎮 Сыграть 3 мини-игры',
+                3,
+                35
+            ),
+
+            (
+                'chest',
+                '🎁 Открыть 1 сундук',
+                1,
+                45
+            ),
+
+            (
+                'boss',
+                '👹 Нанести 100 урона боссу',
+                100,
+                50
+            ),
+
+            (
+                'egg',
+                '🥚 Получить 1 яйцо',
+                1,
+                40
+            ),
+
+            (
+                'market',
+                '🏪 Купить 1 яйцо на рынке',
+                1,
+                50
+            )
+        ])
+
+        conn.execute(
+            '''
+            INSERT INTO extra_daily(
+                user_id,
+                task_date,
+                task_id,
+                target,
+                progress,
+                reward,
+                claimed
+            )
+            VALUES(?,?,?,?,0,?,0)
+
+            ON CONFLICT(user_id)
+            DO UPDATE SET
+                task_date=excluded.task_date,
+                task_id=excluded.task_id,
+                target=excluded.target,
+                progress=0,
+                reward=excluded.reward,
+                claimed=0
+            ''',
+            (
+                uid,
+                today,
+                task[0],
+                task[2],
+                task[3]
+            )
+        )
+
+        conn.commit()
+
+        row = conn.execute(
+            'SELECT * FROM extra_daily WHERE user_id=?',
+            (uid,)
+        ).fetchone()
+
+    conn.close()
+
+    return dict(row)
+
+
+# =========================================================
+# DAILY PROGRESS
+# =========================================================
+
+def progress_daily(uid, kind, amount=1):
+
+    try:
+
+        task = new_daily(uid)
+
+        if (
+            task['task_id'] == kind
+            and not task['claimed']
+        ):
+
+            conn = extra_conn()
+
+            conn.execute(
+                '''
+                UPDATE extra_daily
+                SET progress=MIN(target, progress+?)
+                WHERE user_id=?
+                ''',
+                (
+                    int(amount),
+                    uid
+                )
+            )
+
+            conn.commit()
+            conn.close()
+
+    except Exception:
+        pass
+
 
 # =========================================================
 # TELEGRAM AUTH
 # =========================================================
 
-def validate_telegram_data(init_data):
+def user():
 
-    print("=== TELEGRAM AUTH ===")
-    print("BOT_TOKEN есть:", bool(BOT_TOKEN))
-    print("BOT_TOKEN длина:", len(BOT_TOKEN))
-    print("init_data есть:", bool(init_data))
-    print(
-        "init_data длина:",
-        len(init_data) if init_data else 0
+    raw = request.headers.get(
+        'X-Telegram-Init-Data',
+        ''
     )
 
-    if not init_data:
-        raise ValueError(
-            "Нет Telegram Init Data"
-        )
+    if not raw:
+        return None, 'Открой Mini App через Telegram.'
 
     if not BOT_TOKEN:
-        raise ValueError(
-            "BOT_TOKEN не настроен"
-        )
+        return None, 'На сервере не задан BOT_TOKEN.'
 
-    data = dict(
+    params = dict(
         parse_qsl(
-            init_data,
+            raw,
             keep_blank_values=True
         )
     )
 
-    print(
-        "Telegram поля:",
-        list(data.keys())
-    )
-
-    received_hash = data.pop(
-        "hash",
+    received_hash = params.pop(
+        'hash',
         None
     )
 
     if not received_hash:
-        raise ValueError(
-            "Нет hash"
-        )
+        return None, 'Нет hash Telegram.'
 
-    try:
-
-        auth_date = int(
-            data.get(
-                "auth_date",
-                "0"
-            )
-        )
-
-    except ValueError:
-
-        raise ValueError(
-            "Неверный auth_date"
-        )
-
-    if not auth_date:
-
-        raise ValueError(
-            "Нет auth_date"
-        )
-
-    if time.time() - auth_date > 86400:
-
-        raise ValueError(
-            "Telegram данные устарели"
-        )
-
-    data_check_string = "\n".join(
-        f"{key}={value}"
-        for key, value in sorted(
-            data.items()
-        )
+    check_string = '\n'.join(
+        f'{key}={params[key]}'
+        for key in sorted(params)
     )
 
     secret_key = hmac.new(
-        b"WebAppData",
+        b'WebAppData',
         BOT_TOKEN.encode(),
         hashlib.sha256
     ).digest()
 
     calculated_hash = hmac.new(
         secret_key,
-        data_check_string.encode(),
+        check_string.encode(),
         hashlib.sha256
     ).hexdigest()
 
@@ -340,929 +702,767 @@ def validate_telegram_data(init_data):
         calculated_hash,
         received_hash
     ):
-
-        raise ValueError(
-            "Неверная Telegram подпись"
-        )
+        return None, 'Неверная подпись Telegram.'
 
     try:
 
-        user = json.loads(
-            data.get(
-                "user",
-                "{}"
-            )
+        if (
+            time.time()
+            - int(params.get('auth_date', '0'))
+            > 86400
+        ):
+            return None, 'Сессия Telegram устарела.'
+
+        telegram_user = json.loads(
+            params['user']
         )
 
-    except json.JSONDecodeError:
+    except Exception:
+        return None, 'Некорректные данные Telegram.'
 
-        raise ValueError(
-            "Неверные данные пользователя Telegram"
-        )
-
-    if not user:
-
-        raise ValueError(
-            "Не найден пользователь Telegram"
-        )
-
-    return user
-
-
-def get_current_user():
-
-    init_data = request.headers.get(
-        "X-Telegram-Init-Data",
-        ""
-    )
-
-    user = validate_telegram_data(
-        init_data
-    )
-
-    if "id" not in user:
-
-        raise ValueError(
-            "Не найден ID пользователя Telegram"
-        )
-
-    user_id = int(
-        user["id"]
+    uid = int(
+        telegram_user['id']
     )
 
     database.ensure_player(
-        user_id,
-        user.get("username"),
-        user.get("first_name")
+        uid,
+        telegram_user.get('username', '') or ''
     )
 
-    if database.is_blocked(
-        user_id
-    ):
+    if database.is_blocked(uid):
+        return None, 'Твой аккаунт заблокирован.'
 
-        raise ValueError(
-            "Пользователь заблокирован"
+    return telegram_user, None
+
+
+# =========================================================
+# AUTH WRAPPER
+# =========================================================
+
+def auth():
+
+    u, error = user()
+
+    if error:
+        return (
+            None,
+            (
+                jsonify(
+                    ok=False,
+                    error=error
+                ),
+                401
+            )
         )
 
-    return user
-
-
-def require_user():
-
-    try:
-
-        return get_current_user()
-
-    except Exception as e:
-
-        return jsonify({
-            "ok": False,
-            "error": str(e)
-        }), 401
-
-
-def uid_from_user(user):
-
-    return int(
-        user["id"]
-    )
-
-
-def get_username(user):
-
-    return (
-        user.get("username")
-        or user.get("first_name")
-        or "Игрок"
-    )
+    return u, None
 
 
 # =========================================================
 # ITEMS
 # =========================================================
 
-def activate_item(user_id, item_id):
+def expiry(uid, item_id):
 
-    item_id = int(
-        item_id
+    return active.get(
+        (uid, item_id),
+        0
     )
 
-    if item_id not in ITEMS:
 
-        raise ValueError(
-            "Предмет не найден"
+def has(uid, item_id):
+
+    return expiry(
+        uid,
+        item_id
+    ) > time.time()
+
+
+# =========================================================
+# XP
+# =========================================================
+
+def add_xp(uid, amount):
+
+    multiplier = 2 if has(uid, 3) else 1
+
+    database.add_xp(
+        uid,
+        amount * multiplier
+    )
+
+
+# =========================================================
+# GAME COINS
+# =========================================================
+
+def add_game_coins(uid, amount):
+
+    amount += 1 if has(uid, 2) else 0
+
+    bonus = pet_bonus(uid)
+
+    if bonus > 0:
+        amount = int(
+            amount * (1 + bonus)
         )
-
-    count = database.get_item_count(
-        user_id,
-        item_id
-    )
-
-    if count <= 0:
-
-        raise ValueError(
-            "У тебя нет этого предмета"
-        )
-
-    database.remove_item(
-        user_id,
-        item_id
-    )
-
-    active_items.setdefault(
-        user_id,
-        {}
-    )[item_id] = (
-        time.time()
-        + ITEMS[item_id]["active_seconds"]
-    )
-
-
-def is_item_active(
-    user_id,
-    item_id
-):
-
-    user_items = active_items.get(
-        user_id,
-        {}
-    )
-
-    expires = user_items.get(
-        item_id
-    )
-
-    if not expires:
-
-        return False
-
-    if time.time() >= expires:
-
-        user_items.pop(
-            item_id,
-            None
-        )
-
-        return False
-
-    return True
-
-
-def give_xp(
-    user_id,
-    amount
-):
-
-    if is_item_active(
-        user_id,
-        3
-    ):
-
-        amount *= 2
-
-    return database.add_xp(
-        user_id,
-        amount
-    )
-
-
-def give_game_reward(
-    user_id,
-    amount
-):
-
-    if is_item_active(
-        user_id,
-        2
-    ):
-
-        amount += 1
 
     database.add_egg_coins(
-        user_id,
+        uid,
         amount
     )
 
-    give_xp(
-        user_id,
-        10
-    )
+
+# =========================================================
+# EGG COUNTS
+# =========================================================
+
+def egg_counts(uid):
+
+    eggs = database.get_player_eggs(uid)
+
+    return {
+        str(i): eggs.count(i)
+        for i in EGGS
+    }
 
 
 # =========================================================
-# ACHIEVEMENTS
+# PLAYER SNAPSHOT
 # =========================================================
 
-def check_achievements(
-    user_id
-):
+def snap(uid):
 
-    result = []
+    tap, egg = database.get_balance(uid)
 
-    taps = tap_counter.get(
-        user_id,
-        0
+    current_xp, level = database.get_progress(uid)
+
+    streak, last = database.get_login_info(uid)
+
+    tasks = database.get_daily_tasks(uid)
+
+    owned = egg_counts(uid)
+
+    xp_required = max(
+        100,
+        level * 100
     )
 
-    games = game_counter.get(
-        user_id,
-        0
-    )
+    return {
+        'tap_coins': int(tap),
 
-    xp, level = database.get_progress(
-        user_id
-    )
+        'egg_coins': int(egg),
 
-    eggs_total = database.get_total_eggs(
-        user_id
-    )
+        'xp': int(current_xp),
 
-    boss_damage = database.get_boss_damage(
-        user_id
-    )
+        'level': int(level),
+
+        'xp_required': int(xp_required),
+
+        'streak': int(streak),
+
+        'last_login': last,
+
+        'eggs_total': sum(
+            owned.values()
+        ),
+
+        'eggs': owned,
+
+        'avatar': database.get_avatar(uid),
+
+        'avatars': AVATARS,
+
+        'achievements': database.get_achievements(uid),
+
+        'active_items': {
+            str(i): max(
+                0,
+                int(
+                    expiry(uid, i)
+                    - time.time()
+                )
+            )
+            for i in ITEMS
+            if has(uid, i)
+        },
+
+        'tasks': {
+            'taps': int(tasks[0]),
+            'games': int(tasks[1]),
+            'eggs': int(tasks[2]),
+
+            'tap_claimed':
+                database.has_daily_task_claim(
+                    uid,
+                    'tap'
+                ),
+
+            'game_claimed':
+                database.has_daily_task_claim(
+                    uid,
+                    'game'
+                ),
+
+            'egg_claimed':
+                database.has_daily_task_claim(
+                    uid,
+                    'egg'
+                ),
+        },
+    }
+
+
+# =========================================================
+# ACHIEVEMENTS CHECK
+# =========================================================
+
+def achievements(uid):
+
+    tap, _ = database.get_balance(uid)
+
+    eggs = database.get_player_eggs(uid)
+
+    _, level = database.get_progress(uid)
+
+    streak, _ = database.get_login_info(uid)
+
+    tasks = database.get_daily_tasks(uid)
 
     checks = {
 
-        1: taps >= 1,
+        1:
+            tap >= 1,
 
-        2: taps >= 100,
+        2:
+            tap >= 1000,
 
-        3: taps >= 1000,
+        3:
+            len(eggs) >= 5,
 
-        4: eggs_total >= 1,
+        4:
+            len(set(eggs)) >= 10,
 
-        5: games >= 10,
+        5:
+            tasks[1] >= 10,
 
-        6: level >= 5,
+        6:
+            streak >= 7,
 
-        7: eggs_total >= 10,
+        7:
+            level >= 10,
 
-        8: boss_damage >= 1000
+        8:
+            database.get_boss_damage(uid) >= 100,
     }
 
-    for achievement_id, unlocked in checks.items():
+    unlocked = []
 
-        if not unlocked:
-            continue
+    for achievement_id, condition in checks.items():
 
-        if database.has_achievement(
-            user_id,
-            achievement_id
+        if (
+            condition
+            and not database.has_achievement(
+                uid,
+                achievement_id
+            )
         ):
-            continue
 
-        achievement = ACHIEVEMENTS[
-            achievement_id
-        ]
+            database.add_achievement(
+                uid,
+                achievement_id
+            )
 
-        database.add_achievement(
-            user_id,
-            achievement_id
-        )
+            database.add_egg_coins(
+                uid,
+                ACH[achievement_id][2]
+            )
 
-        database.add_egg_coins(
-            user_id,
-            achievement["reward"]
-        )
+            unlocked.append({
+                'id': achievement_id,
+                'name': ACH[achievement_id][0],
+                'reward': ACH[achievement_id][2]
+            })
 
-        result.append({
-
-            "id":
-                achievement_id,
-
-            "name":
-                achievement["name"],
-
-            "reward":
-                achievement["reward"]
-        })
-
-    return result
+    return unlocked
 
 
 # =========================================================
-# SNAP
+# JSON ERROR
 # =========================================================
 
-def snap(user_id):
+def json_error(message, status=400):
 
-    tap_coins = database.get_tap_coins(
-        user_id
+    return jsonify(
+        ok=False,
+        error=message
+    ), status
+
+
+# =========================================================
+# INDEX
+# =========================================================
+
+@app.get('/')
+def index():
+
+    return jsonify(
+        ok=True,
+        message='STEAL THE EGG server is running!'
     )
-
-    egg_coins = database.get_egg_coins(
-        user_id
-    )
-
-    xp, level = database.get_progress(
-        user_id
-    )
-
-    streak = database.get_login_streak(
-        user_id
-    )
-
-    taps, games, eggs = (
-        database.get_daily_tasks(
-            user_id
-        )
-    )
-
-    player_eggs = database.get_player_eggs(
-        user_id
-    )
-
-    egg_counts = {}
-
-    for egg_id in player_eggs:
-
-        egg_id = str(
-            int(egg_id)
-        )
-
-        egg_counts[egg_id] = (
-            egg_counts.get(
-                egg_id,
-                0
-            ) + 1
-        )
-
-    achievements = database.get_achievements(
-        user_id
-    )
-
-    items = database.get_player_items(
-        user_id
-    )
-
-    boss_damage = database.get_boss_damage(
-        user_id
-    )
-
-    avatar = database.get_avatar(
-        user_id
-    )
-
-    xp_required = 100
-
-    current_xp = xp % xp_required
-
-    return {
-
-        "tap_coins":
-            tap_coins,
-
-        "egg_coins":
-            egg_coins,
-
-        "xp":
-            current_xp,
-
-        "xp_total":
-            xp,
-
-        "xp_required":
-            xp_required,
-
-        "level":
-            level,
-
-        "streak":
-            streak,
-
-        "tasks": {
-
-            "taps":
-                taps,
-
-            "games":
-                games,
-
-            "eggs":
-                eggs
-        },
-
-        "boss_damage":
-            boss_damage,
-
-        "eggs":
-            player_eggs,
-
-        "eggs_total":
-            len(player_eggs),
-
-        "egg_counts":
-            egg_counts,
-
-        "items":
-            items,
-
-        "achievements":
-            achievements,
-
-        "avatar":
-            avatar,
-
-        "avatars":
-            AVATARS
-    }
 
 
 # =========================================================
 # INIT
 # =========================================================
 
-@app.post("/api/init")
-def api_init():
+@app.post('/api/init')
+def init():
 
-    try:
+    u, f = auth()
 
-        user = get_current_user()
+    if f:
+        return f
 
-        user_id = uid_from_user(
-            user
+    uid = int(u['id'])
+
+    streak, last = database.get_login_info(uid)
+
+    today = date.today().isoformat()
+
+    claimed = False
+    reward = 0
+
+    if last != today:
+
+        streak = database.update_login(uid)
+
+        reward = min(
+            10 + streak * 5,
+            100
         )
 
-        database.update_login(
-            user_id
+        database.add_egg_coins(
+            uid,
+            reward
         )
 
-        claimed, streak, reward = (
-            database.get_login_status(
-                user_id
-            )
+        add_xp(
+            uid,
+            10
         )
 
-        if not claimed:
+        claimed = True
 
-            database.add_egg_coins(
-                user_id,
-                reward
-            )
+    return jsonify(
+        ok=True,
 
-            database.set_daily_login(
-                user_id
-            )
+        user={
+            'id': uid,
+            'username': u.get('username', ''),
+            'first_name': u.get('first_name', '')
+        },
 
-        new_achievements = (
-            check_achievements(
-                user_id
-            )
-        )
+        login={
+            'claimed': claimed,
+            'streak': streak,
+            'reward': reward
+        },
 
-        return jsonify({
+        data=snap(uid),
 
-            "ok":
-                True,
-
-            "user":
-                user,
-
-            "username":
-                get_username(user),
-
-            "login": {
-
-                "claimed":
-                    not claimed,
-
-                "streak":
-                    streak,
-
-                "reward":
-                    reward
-            },
-
-            "new_achievements":
-                new_achievements,
-
-            "data":
-                snap(user_id)
-        })
-
-    except Exception as e:
-
-        return jsonify({
-
-            "ok":
-                False,
-
-            "error":
-                str(e)
-        }), 400
+        new_achievements=achievements(uid)
+    )
 
 
 # =========================================================
 # STATE
 # =========================================================
 
-@app.get("/api/state")
-def api_state():
+@app.get('/api/state')
+def state():
 
-    try:
+    u, f = auth()
 
-        user = get_current_user()
+    if f:
+        return f
 
-        return jsonify({
-
-            "ok":
-                True,
-
-            "data":
-                snap(
-                    uid_from_user(
-                        user
-                    )
-                )
-        })
-
-    except Exception as e:
-
-        return jsonify({
-
-            "ok":
-                False,
-
-            "error":
-                str(e)
-        }), 400
+    return jsonify(
+        ok=True,
+        data=snap(int(u['id']))
+    )
 
 
 # =========================================================
 # TAP
 # =========================================================
 
-@app.post("/api/tap")
-def api_tap():
+@app.post('/api/tap')
+def tap():
+
+    u, f = auth()
+
+    if f:
+        return f
+
+    uid = int(u['id'])
+
+    now = time.time()
 
     try:
-
-        user = get_current_user()
-
-        user_id = uid_from_user(
-            user
-        )
-
-        now = time.time()
-
-        previous = last_tap.get(
-            user_id,
-            0
-        )
-
-        if now - previous < 0.05:
-
-            raise ValueError(
-                "Слишком быстро"
+        amount = int(
+            (request.json or {}).get(
+                'amount',
+                1
             )
-
-        last_tap[user_id] = now
-
+        )
+    except (
+        TypeError,
+        ValueError
+    ):
         amount = 1
 
-        if is_item_active(
-            user_id,
-            1
-        ):
+    amount = max(
+        1,
+        min(amount, 40)
+    )
 
-            amount += 2
+    old = [
+        t
+        for t in last_tap.get(uid, [])
+        if now - t < 2
+    ]
 
-        database.add_tap_coins(
-            user_id,
-            amount
+    if len(old) + amount > 80:
+
+        return json_error(
+            'Слишком быстро. Подожди немного.',
+            429
         )
 
-        database.add_task_tap(
-            user_id
-        )
+    old += [now] * amount
 
-        tap_counter[user_id] = (
-            tap_counter.get(
-                user_id,
-                0
-            ) + 1
-        )
+    last_tap[uid] = old
 
-        new_achievements = (
-            check_achievements(
-                user_id
-            )
-        )
+    gain = amount * (
+        3 if has(uid, 1) else 1
+    )
 
-        return jsonify({
+    database.add_tap_coins(
+        uid,
+        gain
+    )
 
-            "ok":
-                True,
+    progress_daily(
+        uid,
+        'tap',
+        amount
+    )
 
-            "amount":
-                amount,
+    add_pass_xp(
+        uid,
+        amount
+    )
 
-            "new_achievements":
-                new_achievements,
+    database.add_task_tap(
+        uid,
+        amount
+    )
 
-            "data":
-                snap(user_id)
-        })
+    add_xp(
+        uid,
+        amount
+    )
 
-    except Exception as e:
+    return jsonify(
+        ok=True,
 
-        return jsonify({
+        gained=gain,
 
-            "ok":
-                False,
+        data=snap(uid),
 
-            "error":
-                str(e)
-        }), 400
+        new_achievements=achievements(uid)
+    )
 
 
 # =========================================================
-# EXCHANGE
+# EXCHANGE TAP COINS -> EGG COINS
 # =========================================================
 
-@app.post("/api/exchange")
-def api_exchange():
+@app.post('/api/exchange')
+def exchange():
+
+    u, f = auth()
+
+    if f:
+        return f
+
+    uid = int(u['id'])
+
+    tap, _ = database.get_balance(uid)
+
+    # 30 Tap Coins = 10 Egg Coins
+    count = tap // 30
+
+    if count < 1:
+
+        return json_error(
+            'Нужно минимум 30 Tap Coins.'
+        )
+
+    spent = count * 30
+
+    received = count * 10
+
+    if not database.remove_tap_coins(
+        uid,
+        spent
+    ):
+        return json_error(
+            'Не удалось выполнить обмен.'
+        )
+
+    database.add_egg_coins(
+        uid,
+        received
+    )
+
+    add_xp(
+        uid,
+        5
+    )
+
+    return jsonify(
+        ok=True,
+        spent=spent,
+        received=received,
+        data=snap(uid)
+    )
+
+
+# =========================================================
+# GAME COOLDOWN
+# =========================================================
+
+def game_ok(uid):
+
+    now = time.time()
+
+    if (
+        now - last_game.get(uid, 0)
+        < 1
+    ):
+        return False
+
+    last_game[uid] = now
+
+    return True
+
+
+# =========================================================
+# GUESS GAME START
+# =========================================================
+
+@app.post('/api/game/guess/start')
+def guess_start():
+
+    u, f = auth()
+
+    if f:
+        return f
+
+    uid = int(u['id'])
+
+    if not game_ok(uid):
+
+        return json_error(
+            'Подожди немного.',
+            429
+        )
+
+    guess[uid] = {
+        'n': random.randint(1, 20),
+        'a': 0
+    }
+
+    return jsonify(
+        ok=True,
+        min=1,
+        max=20,
+        attempts=10
+    )
+
+
+# =========================================================
+# GUESS GAME ANSWER
+# =========================================================
+
+@app.post('/api/game/guess/answer')
+def guess_answer():
+
+    u, f = auth()
+
+    if f:
+        return f
+
+    uid = int(u['id'])
+
+    game = guess.get(uid)
+
+    if not game:
+
+        return json_error(
+            'Игра не запущена.'
+        )
 
     try:
 
-        user = get_current_user()
-
-        user_id = uid_from_user(
-            user
-        )
-
-        if database.get_tap_coins(
-            user_id
-        ) < 1000:
-
-            raise ValueError(
-                "Нужно минимум 1000 Tap Coins"
+        value = int(
+            (request.json or {}).get(
+                'guess'
             )
-
-        database.remove_tap_coins(
-            user_id,
-            1000
         )
 
-        database.add_egg_coins(
-            user_id,
+    except (
+        TypeError,
+        ValueError
+    ):
+
+        return json_error(
+            'Введите число.'
+        )
+
+    if not 1 <= value <= 20:
+
+        return json_error(
+            'Число от 1 до 20.'
+        )
+
+    game['a'] += 1
+
+    attempts = game['a']
+
+    rewards = {
+        1: 5,
+        2: 4,
+        3: 3,
+        4: 3,
+        5: 2,
+        6: 1,
+        7: 1,
+        8: 1,
+        9: 1,
+        10: 1
+    }
+
+    if value == game['n']:
+
+        reward = rewards[attempts]
+
+        add_game_coins(
+            uid,
+            reward
+        )
+
+        database.add_task_game(uid)
+
+        add_xp(
+            uid,
             10
         )
 
-        return jsonify({
+        number = game['n']
 
-            "ok":
-                True,
+        guess.pop(
+            uid,
+            None
+        )
 
-            "received":
-                10,
+        return jsonify(
+            ok=True,
+            result='win',
+            reward=reward,
+            number=number,
+            attempts=attempts,
+            data=snap(uid),
+            new_achievements=achievements(uid)
+        )
 
-            "data":
-                snap(user_id)
-        })
+    if attempts >= 10:
 
-    except Exception as e:
+        number = game['n']
 
-        return jsonify({
+        guess.pop(
+            uid,
+            None
+        )
 
-            "ok":
-                False,
+        database.add_task_game(uid)
 
-            "error":
-                str(e)
-        }), 400
+        return jsonify(
+            ok=True,
+            result='lose',
+            reward=0,
+            number=number,
+            attempts=attempts,
+            data=snap(uid),
+            new_achievements=achievements(uid)
+        )
+
+    return jsonify(
+        ok=True,
+        result='continue',
+        hint=(
+            'Больше!'
+            if value < game['n']
+            else 'Меньше!'
+        ),
+        attempts=attempts
+    )
 
 
 # =========================================================
-# GUESS THE NUMBER
+# MATH GAME START
 # =========================================================
 
-@app.post("/api/game/guess/start")
-def guess_start():
+@app.post('/api/game/math/start')
+def math_start():
 
-    try:
+    u, f = auth()
 
-        user = get_current_user()
+    if f:
+        return f
 
-        user_id = uid_from_user(
-            user
+    uid = int(u['id'])
+
+    if not game_ok(uid):
+
+        return json_error(
+            'Подожди немного.',
+            429
         )
-
-        guess_games[user_id] = {
-
-            "number":
-                random.randint(
-                    1,
-                    20
-                ),
-
-            "attempts":
-                0
-        }
-
-        return jsonify({
-
-            "ok":
-                True
-        })
-
-    except Exception as e:
-
-        return jsonify({
-
-            "ok":
-                False,
-
-            "error":
-                str(e)
-        }), 400
-
-
-@app.post("/api/game/guess/try")
-@app.post("/api/game/guess/answer")
-def guess_try():
-
-    try:
-
-        user = get_current_user()
-
-        user_id = uid_from_user(
-            user
-        )
-
-        game = guess_games.get(
-            user_id
-        )
-
-        if not game:
-
-            raise ValueError(
-                "Сначала начни игру"
-            )
-
-        data = request.get_json(
-            silent=True
-        ) or {}
-
-        try:
-
-            guess = int(
-                data.get("guess")
-            )
-
-        except Exception:
-
-            raise ValueError(
-                "Введи число от 1 до 20"
-            )
-
-        if guess < 1 or guess > 20:
-
-            raise ValueError(
-                "Число должно быть от 1 до 20"
-            )
-
-        game["attempts"] += 1
-
-        number = game["number"]
-
-        if guess == number:
-
-            reward = 10
-
-            give_game_reward(
-                user_id,
-                reward
-            )
-
-            database.add_task_game(
-                user_id
-            )
-
-            game_counter[user_id] = (
-                game_counter.get(
-                    user_id,
-                    0
-                ) + 1
-            )
-
-            new_achievements = (
-                check_achievements(
-                    user_id
-                )
-            )
-
-            del guess_games[user_id]
-
-            return jsonify({
-
-                "ok":
-                    True,
-
-                "result":
-                    "win",
-
-                "number":
-                    number,
-
-                "attempts":
-                    game["attempts"],
-
-                "reward":
-                    reward,
-
-                "new_achievements":
-                    new_achievements,
-
-                "data":
-                    snap(user_id)
-            })
-
-        if game["attempts"] >= 10:
-
-            del guess_games[user_id]
-
-            return jsonify({
-
-                "ok":
-                    True,
-
-                "result":
-                    "lose",
-
-                "number":
-                    number,
-
-                "attempts":
-                    10,
-
-                "reward":
-                    0,
-
-                "data":
-                    snap(user_id)
-            })
-
-        hint = (
-            "Больше"
-            if guess < number
-            else "Меньше"
-        )
-
-        return jsonify({
-
-            "ok":
-                True,
-
-            "result":
-                "continue",
-
-            "hint":
-                hint,
-
-            "attempts":
-                game["attempts"]
-        })
-
-    except Exception as e:
-
-        return jsonify({
-
-            "ok":
-                False,
-
-            "error":
-                str(e)
-        }), 400
-
-
-# =========================================================
-# MATH
-# =========================================================
-
-def create_math_game(user_id):
 
     a = random.randint(
-        1,
-        20
+        5,
+        30
     )
 
     b = random.randint(
-        1,
+        2,
         20
     )
 
     operation = random.choice([
-        "+",
-        "-",
-        "*"
+        '+',
+        '-',
+        '*'
     ])
 
-    if operation == "+":
+    if operation == '+':
 
         answer = a + b
 
-    elif operation == "-":
+    elif operation == '-':
 
         answer = a - b
 
@@ -1270,257 +1470,155 @@ def create_math_game(user_id):
 
         answer = a * b
 
-    math_games[user_id] = {
-
-        "a":
-            a,
-
-        "b":
-            b,
-
-        "operation":
-            operation,
-
-        "answer":
-            answer,
-
-        "question":
-            f"{a} {operation} {b} = ?"
+    math[uid] = {
+        'a': a,
+        'b': b,
+        'op': operation,
+        'answer': answer
     }
 
-    return math_games[user_id]
+    return jsonify(
+        ok=True,
+        question=f'{a} {operation} {b} = ?'
+    )
 
 
-@app.post("/api/game/math/start")
-def math_start():
+# =========================================================
+# NEW MATH QUESTION
+# =========================================================
 
-    try:
+def new_math_question(uid):
 
-        user = get_current_user()
+    a = random.randint(
+        5,
+        30
+    )
 
-        user_id = uid_from_user(
-            user
-        )
+    b = random.randint(
+        2,
+        20
+    )
 
-        game = create_math_game(
-            user_id
-        )
+    operation = random.choice([
+        '+',
+        '-',
+        '*'
+    ])
 
-        return jsonify({
+    if operation == '+':
 
-            "ok":
-                True,
+        answer = a + b
 
-            "question":
-                game["question"]
-        })
+    elif operation == '-':
 
-    except Exception as e:
+        answer = a - b
 
-        return jsonify({
+    else:
 
-            "ok":
-                False,
+        answer = a * b
 
-            "error":
-                str(e)
-        }), 400
+    math[uid] = {
+        'a': a,
+        'b': b,
+        'op': operation,
+        'answer': answer
+    }
+
+    return f'{a} {operation} {b} = ?'
 
 
-@app.post("/api/game/math/answer")
+# =========================================================
+# MATH ANSWER
+# =========================================================
+
+@app.post('/api/game/math/answer')
 def math_answer():
 
+    u, f = auth()
+
+    if f:
+        return f
+
+    uid = int(u['id'])
+
+    game = math.get(uid)
+
+    if not game:
+
+        return json_error(
+            'Задание не запущено.'
+        )
+
     try:
 
-        user = get_current_user()
-
-        user_id = uid_from_user(
-            user
-        )
-
-        game = math_games.get(
-            user_id
-        )
-
-        if not game:
-
-            raise ValueError(
-                "Сначала начни игру"
-            )
-
-        data = request.get_json(
-            silent=True
-        ) or {}
-
-        try:
-
-            answer = int(
-                data.get("answer")
-            )
-
-        except Exception:
-
-            raise ValueError(
-                "Введи число"
-            )
-
-        correct_answer = game["answer"]
-
-        if answer != correct_answer:
-
-            new_game = create_math_game(
-                user_id
-            )
-
-            return jsonify({
-
-                "ok":
-                    True,
-
-                "result":
-                    "lose",
-
-                "correct":
-                    correct_answer,
-
-                "reward":
-                    0,
-
-                "message":
-                    "❌ Неправильно! Новый пример:",
-
-                "question":
-                    new_game["question"],
-
-                "new_question":
-                    new_game["question"]
-            })
-
-        reward = 10
-
-        give_game_reward(
-            user_id,
-            reward
-        )
-
-        database.add_task_game(
-            user_id
-        )
-
-        game_counter[user_id] = (
-            game_counter.get(
-                user_id,
-                0
-            ) + 1
-        )
-
-        new_achievements = (
-            check_achievements(
-                user_id
+        value = int(
+            (request.json or {}).get(
+                'answer'
             )
         )
 
-        math_games.pop(
-            user_id,
+    except (
+        TypeError,
+        ValueError
+    ):
+
+        return json_error(
+            'Введите число.'
+        )
+
+    correct = game['answer']
+
+    database.add_task_game(uid)
+
+    if value == correct:
+
+        math.pop(
+            uid,
             None
         )
 
-        return jsonify({
+        # Победа = 4 Egg Coins
+        reward = 4
 
-            "ok":
-                True,
+        add_game_coins(
+            uid,
+            reward
+        )
 
-            "result":
-                "win",
+        add_xp(
+            uid,
+            10
+        )
 
-            "correct":
-                correct_answer,
+        return jsonify(
+            ok=True,
+            result='win',
+            correct=correct,
+            reward=reward,
+            data=snap(uid),
+            new_achievements=achievements(uid)
+        )
 
-            "reward":
-                reward,
+    new_question = new_math_question(uid)
 
-            "new_achievements":
-                new_achievements,
-
-            "data":
-                snap(user_id)
-        })
-
-    except Exception as e:
-
-        return jsonify({
-
-            "ok":
-                False,
-
-            "error":
-                str(e)
-        }), 400
-
-
-# =========================================================
-# TIC TAC TOE
-# =========================================================
-
-TIC_BOARD_SIZE = 9
-
-
-def create_empty_tic_board():
-    """
-    Создаёт стандартное поле 3x3.
-    Всегда ровно 9 клеток.
-    """
-    return [""] * TIC_BOARD_SIZE
-
-
-def normalize_tic_board(board):
-    """
-    Защищает игру от повреждённого состояния.
-
-    Если по какой-то причине сервер получил:
-    - меньше 9 клеток — добавляем пустые;
-    - больше 9 клеток — обрезаем;
-    - board вообще не список — создаём новое поле.
-
-    В результате всегда возвращается список из 9 элементов.
-    """
-
-    if not isinstance(board, list):
-
-        return create_empty_tic_board()
-
-    normalized = []
-
-    for i in range(TIC_BOARD_SIZE):
-
-        if i < len(board):
-
-            value = board[i]
-
-            if value in ("X", "O"):
-
-                normalized.append(value)
-
-            else:
-
-                normalized.append("")
-
-        else:
-
-            normalized.append("")
-
-    return normalized
-
-
-def check_tic_winner(board):
-
-    # Сначала обязательно нормализуем поле.
-    board = normalize_tic_board(
-        board
+    return jsonify(
+        ok=True,
+        result='wrong',
+        correct=correct,
+        reward=0,
+        question=new_question,
+        data=snap(uid),
+        new_achievements=achievements(uid)
     )
 
-    combinations = [
 
+# =========================================================
+# TIC-TAC-TOE WINNER
+# =========================================================
+
+def winner(board):
+
+    combinations = (
         (0, 1, 2),
         (3, 4, 5),
         (6, 7, 8),
@@ -1531,1719 +1629,2518 @@ def check_tic_winner(board):
 
         (0, 4, 8),
         (2, 4, 6)
-    ]
+    )
 
     for a, b, c in combinations:
 
         if (
-            board[a] != ""
-            and board[a] == board[b]
-            and board[b] == board[c]
+            board[a] != ' '
+            and board[a]
+            == board[b]
+            == board[c]
         ):
 
             return board[a]
 
-    if all(
-        cell != ""
-        for cell in board
-    ):
-
-        return "draw"
+    if ' ' not in board:
+        return 'draw'
 
     return None
 
 
-@app.post("/api/game/tic/start")
+# =========================================================
+# TIC-TAC-TOE START
+# =========================================================
+
+@app.post('/api/game/tic/start')
 def tic_start():
 
-    try:
+    u, f = auth()
 
-        user = get_current_user()
+    if f:
+        return f
 
-        user_id = uid_from_user(
-            user
+    uid = int(u['id'])
+
+    if not game_ok(uid):
+
+        return json_error(
+            'Подожди немного.',
+            429
         )
 
-        # Всегда создаём новое поле из 9 клеток.
-        board = create_empty_tic_board()
+    tic[uid] = [
+        ' '
+    ] * 9
 
-        tic_games[user_id] = {
-
-            "board":
-                board
-        }
-
-        return jsonify({
-
-            "ok":
-                True,
-
-            "board":
-                board
-        })
-
-    except Exception as e:
-
-        return jsonify({
-
-            "ok":
-                False,
-
-            "error":
-                str(e)
-        }), 400
+    return jsonify(
+        ok=True,
+        board=tic[uid]
+    )
 
 
-@app.post("/api/game/tic/move")
+# =========================================================
+# TIC-TAC-TOE FINISH
+# =========================================================
+
+def finish_tic(
+    uid,
+    result,
+    reward=0,
+    xp_amount=0
+):
+
+    if reward:
+
+        add_game_coins(
+            uid,
+            reward
+        )
+
+    if xp_amount:
+
+        add_xp(
+            uid,
+            xp_amount
+        )
+
+    database.add_task_game(uid)
+
+    board = tic.pop(
+        uid,
+        [' '] * 9
+    )
+
+    return jsonify(
+        ok=True,
+        board=board,
+        result=result,
+        reward=reward,
+        data=snap(uid),
+        new_achievements=achievements(uid)
+    )
+
+
+# =========================================================
+# TIC-TAC-TOE MOVE
+# =========================================================
+
+@app.post('/api/game/tic/move')
 def tic_move():
 
-    try:
+    u, f = auth()
 
-        user = get_current_user()
+    if f:
+        return f
 
-        user_id = uid_from_user(
-            user
+    uid = int(u['id'])
+
+    board = tic.get(uid)
+
+    if board is None:
+
+        return json_error(
+            'Игра не запущена.'
         )
-
-        game = tic_games.get(
-            user_id
-        )
-
-        if not game:
-
-            raise ValueError(
-                "Сначала начни игру"
-            )
-
-        # -------------------------------------------------
-        # НОРМАЛИЗАЦИЯ СОСТОЯНИЯ ИГРЫ
-        # -------------------------------------------------
-
-        board = normalize_tic_board(
-            game.get("board")
-        )
-
-        # Сохраняем исправленную доску обратно.
-        game["board"] = board
-
-        # -------------------------------------------------
-        # ПОЛУЧАЕМ ИНДЕКС КЛЕТКИ
-        # -------------------------------------------------
-
-        data = request.get_json(
-            silent=True
-        ) or {}
-
-        raw_index = data.get(
-            "index"
-        )
-
-        try:
-
-            index = int(
-                raw_index
-            )
-
-        except Exception:
-
-            raise ValueError(
-                "Неверная клетка"
-            )
-
-        # Очень важная проверка.
-        # Допустимые индексы:
-        #
-        # 0 1 2
-        # 3 4 5
-        # 6 7 8
-        #
-        if index < 0 or index >= TIC_BOARD_SIZE:
-
-            raise ValueError(
-                "Неверная клетка"
-            )
-
-        # Дополнительная защита перед обращением
-        # к board[index].
-        if index >= len(board):
-
-            raise ValueError(
-                "Ошибка игрового поля"
-            )
-
-        # -------------------------------------------------
-        # ПРОВЕРЯЕМ, СВОБОДНА ЛИ КЛЕТКА
-        # -------------------------------------------------
-
-        if board[index] != "":
-
-            raise ValueError(
-                "Эта клетка уже занята"
-            )
-
-        # -------------------------------------------------
-        # ХОД ИГРОКА
-        # -------------------------------------------------
-
-        board[index] = "X"
-
-        game["board"] = board
-
-        winner = check_tic_winner(
-            board
-        )
-
-        # -------------------------------------------------
-        # ПОБЕДА ИГРОКА
-        # -------------------------------------------------
-
-        if winner == "X":
-
-            reward = 15
-
-            give_game_reward(
-                user_id,
-                reward
-            )
-
-            database.add_task_game(
-                user_id
-            )
-
-            game_counter[user_id] = (
-                game_counter.get(
-                    user_id,
-                    0
-                ) + 1
-            )
-
-            new_achievements = (
-                check_achievements(
-                    user_id
-                )
-            )
-
-            del tic_games[user_id]
-
-            return jsonify({
-
-                "ok":
-                    True,
-
-                "result":
-                    "win",
-
-                "board":
-                    board,
-
-                "reward":
-                    reward,
-
-                "new_achievements":
-                    new_achievements,
-
-                "data":
-                    snap(user_id)
-            })
-
-        # -------------------------------------------------
-        # НИЧЬЯ ПОСЛЕ ХОДА ИГРОКА
-        # -------------------------------------------------
-
-        if winner == "draw":
-
-            del tic_games[user_id]
-
-            return jsonify({
-
-                "ok":
-                    True,
-
-                "result":
-                    "draw",
-
-                "board":
-                    board,
-
-                "reward":
-                    2,
-
-                "data":
-                    snap(user_id)
-            })
-
-        # -------------------------------------------------
-        # ХОД КОМПЬЮТЕРА
-        # -------------------------------------------------
-
-        # Получаем именно свободные клетки.
-        # Поэтому компьютер никогда не сможет выбрать
-        # несуществующий или занятый индекс.
-        empty = [
-
-            i
-
-            for i in range(TIC_BOARD_SIZE)
-
-            if board[i] == ""
-        ]
-
-        if empty:
-
-            bot_index = random.choice(
-                empty
-            )
-
-            board[bot_index] = "O"
-
-            game["board"] = board
-
-        # -------------------------------------------------
-        # ПРОВЕРКА ПОБЕДЫ КОМПЬЮТЕРА
-        # -------------------------------------------------
-
-        winner = check_tic_winner(
-            board
-        )
-
-        if winner == "O":
-
-            game_counter[user_id] = (
-                game_counter.get(
-                    user_id,
-                    0
-                ) + 1
-            )
-
-            del tic_games[user_id]
-
-            return jsonify({
-
-                "ok":
-                    True,
-
-                "result":
-                    "lose",
-
-                "board":
-                    board,
-
-                "reward":
-                    0,
-
-                "data":
-                    snap(user_id)
-            })
-
-        # -------------------------------------------------
-        # НИЧЬЯ ПОСЛЕ ХОДА КОМПЬЮТЕРА
-        # -------------------------------------------------
-
-        if winner == "draw":
-
-            del tic_games[user_id]
-
-            return jsonify({
-
-                "ok":
-                    True,
-
-                "result":
-                    "draw",
-
-                "board":
-                    board,
-
-                "reward":
-                    2,
-
-                "data":
-                    snap(user_id)
-            })
-
-        # -------------------------------------------------
-        # ИГРА ПРОДОЛЖАЕТСЯ
-        # -------------------------------------------------
-
-        return jsonify({
-
-            "ok":
-                True,
-
-            "result":
-                "continue",
-
-            "board":
-                board
-        })
-
-    except Exception as e:
-
-        return jsonify({
-
-            "ok":
-                False,
-
-            "error":
-                str(e)
-        }), 400
-
-
-# =========================================================
-# EGGS
-# =========================================================
-
-@app.get("/api/eggs")
-def api_eggs():
 
     try:
 
-        user = get_current_user()
-
-        user_id = uid_from_user(
-            user
-        )
-
-        owned_list = (
-            database.get_player_eggs(
-                user_id
+        index = int(
+            (request.json or {}).get(
+                'index'
             )
         )
 
-        owned = {}
+    except (
+        TypeError,
+        ValueError
+    ):
 
-        for egg_id in owned_list:
+        return json_error(
+            'Неверная клетка.'
+        )
 
-            key = str(
-                int(egg_id)
-            )
+    if index < 0 or index > 8:
 
-            owned[key] = (
-                owned.get(
-                    key,
-                    0
-                ) + 1
-            )
+        return json_error(
+            'Неверная клетка.'
+        )
 
-        shop = {}
+    if board[index] != ' ':
 
-        for egg_id, egg in EGGS.items():
+        return json_error(
+            'Клетка уже занята.'
+        )
 
-            shop[str(egg_id)] = {
+    board[index] = 'X'
 
-                "id":
-                    egg_id,
+    result = winner(board)
 
-                "name":
-                    egg["name"],
+    if result == 'X':
 
-                "price":
-                    egg["price"],
+        return finish_tic(
+            uid,
+            'win',
+            5,
+            15
+        )
 
-                "rarity":
-                    egg["rarity"]
-            }
+    if result == 'draw':
 
-        return jsonify({
+        return finish_tic(
+            uid,
+            'draw',
+            2,
+            10
+        )
 
-            "ok":
-                True,
+    empty = [
+        position
+        for position, value
+        in enumerate(board)
+        if value == ' '
+    ]
 
-            "shop":
-                shop,
+    if empty:
 
-            "owned":
-                owned,
+        board[
+            random.choice(empty)
+        ] = 'O'
 
-            "eggs":
-                shop
-        })
+    result = winner(board)
 
-    except Exception as e:
+    if result == 'O':
 
-        return jsonify({
+        return finish_tic(
+            uid,
+            'lose',
+            0,
+            0
+        )
 
-            "ok":
-                False,
+    if result == 'draw':
 
-            "error":
-                str(e)
-        }), 400
+        return finish_tic(
+            uid,
+            'draw',
+            2,
+            10
+        )
+
+    return jsonify(
+        ok=True,
+        board=board,
+        result='continue'
+    )
 
 
-@app.post("/api/eggs/buy")
+# =========================================================
+# EGGS SHOP
+# =========================================================
+
+@app.get('/api/eggs')
+def eggs():
+
+    u, f = auth()
+
+    if f:
+        return f
+
+    uid = int(u['id'])
+
+    owned = egg_counts(uid)
+
+    shop = {
+        str(i): {
+            'id': i,
+            'name': egg[0],
+            'price': egg[1],
+            'rarity': egg[2]
+        }
+
+        for i, egg in EGGS.items()
+    }
+
+    return jsonify(
+        ok=True,
+        shop=shop,
+        owned=owned,
+        total=sum(
+            owned.values()
+        )
+    )
+
+
+# =========================================================
+# BUY EGG
+# =========================================================
+
+@app.post('/api/eggs/buy')
 def buy_egg():
 
+    u, f = auth()
+
+    if f:
+        return f
+
+    uid = int(u['id'])
+
     try:
 
-        user = get_current_user()
-
-        user_id = uid_from_user(
-            user
-        )
-
-        data = request.get_json(
-            silent=True
-        ) or {}
-
-        try:
-
-            egg_id = int(
-                data.get("egg_id")
-            )
-
-        except Exception:
-
-            raise ValueError(
-                "Неверный ID яйца"
-            )
-
-        egg = EGGS.get(
-            egg_id
-        )
-
-        if not egg:
-
-            raise ValueError(
-                "Яйцо не найдено"
-            )
-
-        price = egg["price"]
-
-        if database.get_egg_coins(
-            user_id
-        ) < price:
-
-            raise ValueError(
-                f"Недостаточно Egg Coins. Нужно {price}"
-            )
-
-        database.remove_egg_coins(
-            user_id,
-            price
-        )
-
-        database.add_egg(
-            user_id,
-            egg_id
-        )
-
-        database.add_task_egg(
-            user_id
-        )
-
-        new_achievements = (
-            check_achievements(
-                user_id
+        egg_id = int(
+            (request.json or {}).get(
+                'egg_id'
             )
         )
 
-        return jsonify({
+    except (
+        TypeError,
+        ValueError
+    ):
 
-            "ok":
-                True,
+        return json_error(
+            'Неверное яйцо.'
+        )
 
-            "egg": {
+    if egg_id not in EGGS:
 
-                "id":
-                    egg_id,
+        return json_error(
+            'Такого яйца нет.'
+        )
 
-                "name":
-                    egg["name"],
+    price = EGGS[egg_id][1]
 
-                "price":
-                    price,
+    if not database.remove_egg_coins(
+        uid,
+        price
+    ):
 
-                "rarity":
-                    egg["rarity"]
-            },
+        return json_error(
+            f'Недостаточно Egg Coins. Нужно {price} 🥚.'
+        )
 
-            "new_achievements":
-                new_achievements,
+    database.add_egg(
+        uid,
+        egg_id
+    )
 
-            "data":
-                snap(user_id)
-        })
+    progress_daily(
+        uid,
+        'egg',
+        1
+    )
 
-    except Exception as e:
+    add_pass_xp(
+        uid,
+        15
+    )
 
-        return jsonify({
+    database.add_task_egg(
+        uid
+    )
 
-            "ok":
-                False,
+    add_xp(
+        uid,
+        15
+    )
 
-            "error":
-                str(e)
-        }), 400
+    return jsonify(
+        ok=True,
+
+        egg={
+            'id': egg_id,
+            'name': EGGS[egg_id][0]
+        },
+
+        data=snap(uid),
+
+        new_achievements=achievements(uid)
+    )
 
 
 # =========================================================
 # OPEN EGG
 # =========================================================
 
-@app.post("/api/eggs/open")
+@app.post('/api/eggs/open')
 def open_egg():
 
-    try:
+    u, f = auth()
 
-        user = get_current_user()
+    if f:
+        return f
 
-        user_id = uid_from_user(
-            user
-        )
-
-        data = request.get_json(
-            silent=True
-        ) or {}
-
-        try:
-
-            egg_id = int(
-                data.get("egg_id")
-            )
-
-        except Exception:
-
-            raise ValueError(
-                "Неверный ID яйца"
-            )
-
-        if egg_id not in EGGS:
-
-            raise ValueError(
-                "Яйцо не найдено"
-            )
-
-        if database.get_egg_count(
-            user_id,
-            egg_id
-        ) <= 0:
-
-            raise ValueError(
-                "У тебя нет этого яйца"
-            )
-
-        database.remove_one_egg(
-            user_id,
-            egg_id
-        )
-
-        reward = 5 + egg_id * 2
-
-        database.add_egg_coins(
-            user_id,
-            reward
-        )
-
-        give_xp(
-            user_id,
-            20
-        )
-
-        new_achievements = (
-            check_achievements(
-                user_id
-            )
-        )
-
-        return jsonify({
-
-            "ok":
-                True,
-
-            "egg_id":
-                egg_id,
-
-            "reward":
-                reward,
-
-            "new_achievements":
-                new_achievements,
-
-            "data":
-                snap(user_id)
-        })
-
-    except Exception as e:
-
-        return jsonify({
-
-            "ok":
-                False,
-
-            "error":
-                str(e)
-        }), 400
-
-
-# =========================================================
-# ITEMS API
-# =========================================================
-
-@app.get("/api/items")
-def api_items():
+    uid = int(u['id'])
 
     try:
 
-        user = get_current_user()
-
-        user_id = uid_from_user(
-            user
+        egg_id = int(
+            (request.json or {}).get(
+                'egg_id'
+            )
         )
 
-        result = {}
+    except (
+        TypeError,
+        ValueError
+    ):
 
-        for item_id, item in ITEMS.items():
+        return json_error(
+            'Неверное яйцо.'
+        )
 
-            result[str(item_id)] = {
+    if egg_id not in EGGS:
 
-                "id":
-                    item_id,
+        return json_error(
+            'Такого яйца нет.'
+        )
 
-                "name":
-                    item["name"],
+    if not database.remove_one_egg(
+        uid,
+        egg_id
+    ):
 
-                "description":
-                    item["description"],
+        return json_error(
+            'У тебя нет этого яйца.'
+        )
 
-                "price":
-                    item["price"],
+    reward = 5 + egg_id * 2
 
-                "active_seconds":
-                    item["active_seconds"],
+    database.add_egg_coins(
+        uid,
+        reward
+    )
 
-                "count":
+    add_xp(
+        uid,
+        20
+    )
+
+    return jsonify(
+        ok=True,
+        reward=reward,
+
+        egg={
+            'id': egg_id,
+            'name': EGGS[egg_id][0]
+        },
+
+        data=snap(uid),
+
+        new_achievements=achievements(uid)
+    )
+
+
+# =========================================================
+# ITEMS LIST
+# =========================================================
+
+@app.get('/api/items')
+def items():
+
+    u, f = auth()
+
+    if f:
+        return f
+
+    uid = int(u['id'])
+
+    return jsonify(
+        ok=True,
+
+        items={
+            str(i): {
+                'id': i,
+                'name': item[0],
+                'price': item[1],
+                'description': item[2],
+
+                'count':
                     database.get_item_count(
-                        user_id,
-                        item_id
+                        uid,
+                        i
                     ),
 
-                "active":
-                    is_item_active(
-                        user_id,
-                        item_id
+                'active_seconds':
+                    max(
+                        0,
+                        int(
+                            expiry(uid, i)
+                            - time.time()
+                        )
                     )
             }
 
-        return jsonify({
-
-            "ok":
-                True,
-
-            "items":
-                result
-        })
-
-    except Exception as e:
-
-        return jsonify({
-
-            "ok":
-                False,
-
-            "error":
-                str(e)
-        }), 400
+            for i, item in ITEMS.items()
+        }
+    )
 
 
-@app.post("/api/items/buy")
+# =========================================================
+# BUY ITEM
+# =========================================================
+
+@app.post('/api/items/buy')
 def buy_item():
 
-    try:
+    u, f = auth()
 
-        user = get_current_user()
+    if f:
+        return f
 
-        user_id = uid_from_user(
-            user
-        )
-
-        data = request.get_json(
-            silent=True
-        ) or {}
-
-        item_id = int(
-            data.get("item_id")
-        )
-
-        item = ITEMS.get(
-            item_id
-        )
-
-        if not item:
-
-            raise ValueError(
-                "Предмет не найден"
-            )
-
-        price = item["price"]
-
-        if database.get_egg_coins(
-            user_id
-        ) < price:
-
-            raise ValueError(
-                "Недостаточно Egg Coins"
-            )
-
-        database.remove_egg_coins(
-            user_id,
-            price
-        )
-
-        database.add_item(
-            user_id,
-            item_id
-        )
-
-        return jsonify({
-
-            "ok":
-                True,
-
-            "data":
-                snap(user_id)
-        })
-
-    except Exception as e:
-
-        return jsonify({
-
-            "ok":
-                False,
-
-            "error":
-                str(e)
-        }), 400
-
-
-@app.post("/api/items/activate")
-def use_item():
+    uid = int(u['id'])
 
     try:
 
-        user = get_current_user()
-
-        user_id = uid_from_user(
-            user
-        )
-
-        data = request.get_json(
-            silent=True
-        ) or {}
-
         item_id = int(
-            data.get("item_id")
+            (request.json or {}).get(
+                'item_id'
+            )
         )
 
-        activate_item(
-            user_id,
-            item_id
+    except (
+        TypeError,
+        ValueError
+    ):
+
+        return json_error(
+            'Неверный предмет.'
         )
 
-        return jsonify({
+    if item_id not in ITEMS:
 
-            "ok":
-                True,
+        return json_error(
+            'Такого предмета нет.'
+        )
 
-            "data":
-                snap(user_id)
-        })
+    price = ITEMS[item_id][1]
 
-    except Exception as e:
+    if not database.remove_egg_coins(
+        uid,
+        price
+    ):
 
-        return jsonify({
+        return json_error(
+            f'Недостаточно Egg Coins. Нужно {price} 🥚.'
+        )
 
-            "ok":
-                False,
+    database.add_item(
+        uid,
+        item_id
+    )
 
-            "error":
-                str(e)
-        }), 400
+    add_xp(
+        uid,
+        10
+    )
+
+    return jsonify(
+        ok=True,
+        data=snap(uid)
+    )
 
 
 # =========================================================
-# ACHIEVEMENTS API
+# ACTIVATE ITEM
 # =========================================================
 
-@app.get("/api/achievements")
-def api_achievements():
+@app.post('/api/items/activate')
+def activate_item():
+
+    u, f = auth()
+
+    if f:
+        return f
+
+    uid = int(u['id'])
 
     try:
 
-        user = get_current_user()
-
-        user_id = uid_from_user(
-            user
+        item_id = int(
+            (request.json or {}).get(
+                'item_id'
+            )
         )
 
-        unlocked = {
+    except (
+        TypeError,
+        ValueError
+    ):
 
-            a["achievement_id"]
+        return json_error(
+            'Неверный предмет.'
+        )
 
-            for a in database.get_achievements(
-                user_id
-            )
-        }
+    if item_id not in ITEMS:
 
-        items = []
+        return json_error(
+            'Такого предмета нет.'
+        )
 
-        for achievement_id, achievement in (
-            ACHIEVEMENTS.items()
-        ):
+    if not database.remove_item(
+        uid,
+        item_id
+    ):
 
-            items.append({
+        return json_error(
+            'У тебя нет этого предмета.'
+        )
 
-                "id":
-                    achievement_id,
+    active[
+        (uid, item_id)
+    ] = time.time() + 600
 
-                "name":
-                    achievement["name"],
+    return jsonify(
+        ok=True,
+        data=snap(uid)
+    )
 
-                "description":
-                    achievement["description"],
 
-                "reward":
-                    achievement["reward"],
+# =========================================================
+# ACHIEVEMENTS
+# =========================================================
 
-                "unlocked":
-                    achievement_id in unlocked
-            })
+@app.get('/api/achievements')
+def achievement_list():
 
-        return jsonify({
+    u, f = auth()
 
-            "ok":
-                True,
+    if f:
+        return f
 
-            "items":
-                items
-        })
+    uid = int(u['id'])
 
-    except Exception as e:
+    unlocked = set(
+        database.get_achievements(uid)
+    )
 
-        return jsonify({
+    return jsonify(
+        ok=True,
 
-            "ok":
-                False,
+        items=[
+            {
+                'id': i,
+                'name': achievement[0],
+                'description': achievement[1],
+                'reward': achievement[2],
+                'unlocked':
+                    i in unlocked
+            }
 
-            "error":
-                str(e)
-        }), 400
+            for i, achievement
+            in ACH.items()
+        ]
+    )
 
 
 # =========================================================
 # LEADERBOARD
 # =========================================================
 
-@app.get("/api/leaderboard")
+@app.get('/api/leaderboard')
 def leaderboard():
 
-    try:
+    u, f = auth()
 
-        user = get_current_user()
+    if f:
+        return f
 
-        user_id = uid_from_user(
-            user
+    uid = int(u['id'])
+
+    players = database.get_top_players(
+        10
+    )
+
+    for player in players:
+
+        player['avatar'] = database.get_avatar(
+            player['user_id']
         )
 
-        players = database.get_top_players(
-            10
+    return jsonify(
+        ok=True,
+        players=players,
+        my_rank=database.get_player_rank(
+            uid
         )
-
-        result = []
-
-        for i, player in enumerate(
-            players,
-            start=1
-        ):
-
-            player_id = int(
-                player["user_id"]
-            )
-
-            result.append({
-
-                "rank":
-                    i,
-
-                "user_id":
-                    player_id,
-
-                "username":
-                    player["username"],
-
-                "tap_coins":
-                    player["tap_coins"],
-
-                "egg_coins":
-                    player["egg_coins"],
-
-                "level":
-                    player["level"],
-
-                "xp":
-                    player["xp"],
-
-                "avatar":
-                    database.get_avatar(
-                        player_id
-                    )
-            })
-
-        all_players = (
-            database.get_all_players()
-        )
-
-        all_players.sort(
-
-            key=lambda p: (
-                p["egg_coins"],
-                p["xp"]
-            ),
-
-            reverse=True
-        )
-
-        my_rank = None
-
-        for i, player in enumerate(
-            all_players,
-            start=1
-        ):
-
-            if int(
-                player["user_id"]
-            ) == user_id:
-
-                my_rank = i
-
-                break
-
-        return jsonify({
-
-            "ok":
-                True,
-
-            "players":
-                result,
-
-            "my_rank":
-                my_rank
-        })
-
-    except Exception as e:
-
-        return jsonify({
-
-            "ok":
-                False,
-
-            "error":
-                str(e)
-        }), 400
+    )
 
 
 # =========================================================
-# AVATAR
+# SET AVATAR
 # =========================================================
 
-@app.get("/api/avatar")
-def get_avatar_api():
+@app.post('/api/profile/avatar')
+def set_avatar():
 
-    try:
+    u, f = auth()
 
-        user = get_current_user()
+    if f:
+        return f
 
-        user_id = uid_from_user(
-            user
+    uid = int(u['id'])
+
+    avatar = str(
+        (request.json or {}).get(
+            'avatar',
+            ''
+        )
+    ).strip()
+
+    if avatar not in AVATARS:
+
+        return json_error(
+            'Такой аватар недоступен.'
         )
 
-        return jsonify({
+    database.set_avatar(
+        uid,
+        avatar
+    )
 
-            "ok":
-                True,
-
-            "avatar":
-                database.get_avatar(
-                    user_id
-                ),
-
-            "avatars":
-                AVATARS
-        })
-
-    except Exception as e:
-
-        return jsonify({
-
-            "ok":
-                False,
-
-            "error":
-                str(e)
-        }), 400
+    return jsonify(
+        ok=True,
+        avatar=avatar,
+        data=snap(uid)
+    )
 
 
-@app.post("/api/avatar")
-def set_avatar_api():
+# =========================================================
+# AVATARS
+# =========================================================
 
-    try:
+@app.get('/api/profile/avatars')
+def avatars():
 
-        user = get_current_user()
+    u, f = auth()
 
-        user_id = uid_from_user(
-            user
+    if f:
+        return f
+
+    return jsonify(
+        ok=True,
+        avatars=AVATARS,
+        current=database.get_avatar(
+            int(u['id'])
         )
-
-        data = request.get_json(
-            silent=True
-        ) or {}
-
-        avatar = str(
-            data.get(
-                "avatar",
-                ""
-            )
-        )
-
-        if avatar not in AVATARS:
-
-            raise ValueError(
-                "Такой аватар недоступен"
-            )
-
-        database.set_avatar(
-            user_id,
-            avatar
-        )
-
-        return jsonify({
-
-            "ok":
-                True,
-
-            "avatar":
-                avatar,
-
-            "data":
-                snap(user_id)
-        })
-
-    except Exception as e:
-
-        return jsonify({
-
-            "ok":
-                False,
-
-            "error":
-                str(e)
-        }), 400
+    )
 
 
 # =========================================================
 # DAILY BONUS
 # =========================================================
 
-@app.post("/api/daily/bonus")
-def daily_bonus():
+@app.post('/api/daily/bonus')
+def bonus():
 
-    try:
+    u, f = auth()
 
-        user = get_current_user()
+    if f:
+        return f
 
-        user_id = uid_from_user(
-            user
+    uid = int(u['id'])
+
+    today = date.today().isoformat()
+
+    if (
+        database.get_daily_bonus_date(uid)
+        == today
+    ):
+
+        return json_error(
+            'Бонус уже получен сегодня.'
         )
 
-        today = date.today().isoformat()
+    streak, _ = database.get_login_info(
+        uid
+    )
 
-        last = database.get_daily_bonus_date(
-            user_id
-        )
+    reward = min(
+        20 + streak * 5,
+        100
+    )
 
-        if last == today:
+    database.add_egg_coins(
+        uid,
+        reward
+    )
 
-            raise ValueError(
-                "Сегодня ты уже получил бонус"
-            )
+    database.set_daily_bonus_date(
+        uid
+    )
 
-        reward = 25
+    add_xp(
+        uid,
+        20
+    )
 
-        database.add_egg_coins(
-            user_id,
-            reward
-        )
-
-        database.set_daily_bonus_date(
-            user_id,
-            today
-        )
-
-        return jsonify({
-
-            "ok":
-                True,
-
-            "reward":
-                reward,
-
-            "data":
-                snap(user_id)
-        })
-
-    except Exception as e:
-
-        return jsonify({
-
-            "ok":
-                False,
-
-            "error":
-                str(e)
-        }), 400
+    return jsonify(
+        ok=True,
+        reward=reward,
+        data=snap(uid)
+    )
 
 
 # =========================================================
 # DAILY TASKS
 # =========================================================
 
-@app.get("/api/daily/tasks")
-def daily_tasks():
+@app.get('/api/daily/tasks')
+def tasks():
 
-    try:
+    u, f = auth()
 
-        user = get_current_user()
+    if f:
+        return f
 
-        user_id = uid_from_user(
-            user
-        )
+    uid = int(u['id'])
 
-        taps, games, eggs = (
-            database.get_daily_tasks(
-                user_id
-            )
-        )
+    task = database.get_daily_tasks(
+        uid
+    )
 
-        tasks = [
+    return jsonify(
+        ok=True,
 
+        tasks=[
             {
-                "id":
-                    1,
-
-                "title":
-                    "👆 Сделать 50 тапов",
-
-                "progress":
-                    taps,
-
-                "target":
-                    50,
-
-                "reward":
-                    10,
-
-                "claimed":
+                'id': 'tap',
+                'title': '👆 Сделать 100 тапов',
+                'progress': min(
+                    task[0],
+                    100
+                ),
+                'target': 100,
+                'reward': 25,
+                'claimed':
                     database.has_daily_task_claim(
-                        user_id,
-                        1
+                        uid,
+                        'tap'
                     )
             },
 
             {
-                "id":
-                    2,
-
-                "title":
-                    "🎮 Сыграть 3 игры",
-
-                "progress":
-                    games,
-
-                "target":
-                    3,
-
-                "reward":
-                    15,
-
-                "claimed":
+                'id': 'game',
+                'title': '🎮 Сыграть 3 игры',
+                'progress': min(
+                    task[1],
+                    3
+                ),
+                'target': 3,
+                'reward': 30,
+                'claimed':
                     database.has_daily_task_claim(
-                        user_id,
-                        2
+                        uid,
+                        'game'
                     )
             },
 
             {
-                "id":
-                    3,
-
-                "title":
-                    "🥚 Получить яйцо",
-
-                "progress":
-                    eggs,
-
-                "target":
-                    1,
-
-                "reward":
-                    20,
-
-                "claimed":
+                'id': 'egg',
+                'title': '🥚 Купить 1 яйцо',
+                'progress': min(
+                    task[2],
+                    1
+                ),
+                'target': 1,
+                'reward': 40,
+                'claimed':
                     database.has_daily_task_claim(
-                        user_id,
-                        3
+                        uid,
+                        'egg'
                     )
             }
         ]
-
-        return jsonify({
-
-            "ok":
-                True,
-
-            "tasks":
-                tasks
-        })
-
-    except Exception as e:
-
-        return jsonify({
-
-            "ok":
-                False,
-
-            "error":
-                str(e)
-        }), 400
-
-
-@app.post("/api/daily/tasks/claim")
-def claim_task():
-
-    try:
-
-        user = get_current_user()
-
-        user_id = uid_from_user(
-            user
-        )
-
-        data = request.get_json(
-            silent=True
-        ) or {}
-
-        task_id = int(
-            data.get("task_id")
-        )
-
-        taps, games, eggs = (
-            database.get_daily_tasks(
-                user_id
-            )
-        )
-
-        task_data = {
-
-            1: (
-                taps,
-                50,
-                10
-            ),
-
-            2: (
-                games,
-                3,
-                15
-            ),
-
-            3: (
-                eggs,
-                1,
-                20
-            )
-        }
-
-        if task_id not in task_data:
-
-            raise ValueError(
-                "Задание не найдено"
-            )
-
-        progress, target, reward = (
-            task_data[task_id]
-        )
-
-        if database.has_daily_task_claim(
-            user_id,
-            task_id
-        ):
-
-            raise ValueError(
-                "Задание уже получено"
-            )
-
-        if progress < target:
-
-            raise ValueError(
-                "Задание ещё не выполнено"
-            )
-
-        database.add_daily_task_claim(
-            user_id,
-            task_id
-        )
-
-        database.add_egg_coins(
-            user_id,
-            reward
-        )
-
-        return jsonify({
-
-            "ok":
-                True,
-
-            "reward":
-                reward,
-
-            "data":
-                snap(user_id)
-        })
-
-    except Exception as e:
-
-        return jsonify({
-
-            "ok":
-                False,
-
-            "error":
-                str(e)
-        }), 400
+    )
 
 
 # =========================================================
-# BOSS
+# CLAIM DAILY TASK
 # =========================================================
 
-@app.get("/api/boss")
-def boss():
+@app.post('/api/daily/tasks/claim')
+def claim():
 
-    try:
+    u, f = auth()
 
-        user = get_current_user()
+    if f:
+        return f
 
-        user_id = uid_from_user(
-            user
+    uid = int(u['id'])
+
+    task_id = (
+        request.json or {}
+    ).get('task_id')
+
+    rewards = {
+        'tap': 25,
+        'game': 30,
+        'egg': 40
+    }
+
+    targets = {
+        'tap': 100,
+        'game': 3,
+        'egg': 1
+    }
+
+    task = database.get_daily_tasks(
+        uid
+    )
+
+    progress = {
+        'tap': task[0],
+        'game': task[1],
+        'egg': task[2]
+    }
+
+    if (
+        task_id not in rewards
+        or progress[task_id]
+        < targets[task_id]
+    ):
+
+        return json_error(
+            'Задание ещё не выполнено или неверное задание.'
         )
 
-        return jsonify({
+    if not database.add_daily_task_claim(
+        uid,
+        task_id
+    ):
 
-            "ok":
-                True,
-
-            "hp":
-                boss_hp,
-
-            "max_hp":
-                BOSS_MAX_HP,
-
-            "my_damage":
-                database.get_boss_damage(
-                    user_id
-                )
-        })
-
-    except Exception as e:
-
-        return jsonify({
-
-            "ok":
-                False,
-
-            "error":
-                str(e)
-        }), 400
-
-
-@app.post("/api/boss/attack")
-def boss_attack():
-
-    global boss_hp
-
-    try:
-
-        user = get_current_user()
-
-        user_id = uid_from_user(
-            user
+        return json_error(
+            'Задание уже получено.'
         )
 
-        now = time.time()
+    database.add_egg_coins(
+        uid,
+        rewards[task_id]
+    )
 
-        previous = last_boss.get(
-            user_id,
-            0
-        )
+    add_xp(
+        uid,
+        15
+    )
 
-        if now - previous < 0.2:
-
-            raise ValueError(
-                "Слишком быстро"
-            )
-
-        last_boss[user_id] = now
-
-        damage = random.randint(
-            5,
-            15
-        )
-
-        boss_hp = max(
-            0,
-            boss_hp - damage
-        )
-
-        database.add_boss_damage(
-            user_id,
-            damage
-        )
-
-        give_xp(
-            user_id,
-            2
-        )
-
-        new_achievements = (
-            check_achievements(
-                user_id
-            )
-        )
-
-        defeated = False
-
-        if boss_hp <= 0:
-
-            defeated = True
-
-            database.add_egg_coins(
-                user_id,
-                100
-            )
-
-            boss_hp = BOSS_MAX_HP
-
-        return jsonify({
-
-            "ok":
-                True,
-
-            "damage":
-                damage,
-
-            "defeated":
-                defeated,
-
-            "hp":
-                boss_hp,
-
-            "max_hp":
-                BOSS_MAX_HP,
-
-            "new_achievements":
-                new_achievements,
-
-            "data":
-                snap(user_id)
-        })
-
-    except Exception as e:
-
-        return jsonify({
-
-            "ok":
-                False,
-
-            "error":
-                str(e)
-        }), 400
+    return jsonify(
+        ok=True,
+        reward=rewards[task_id],
+        data=snap(uid)
+    )
 
 
 # =========================================================
 # WITHDRAWAL
 # =========================================================
 
-@app.get("/api/withdrawal")
+@app.get('/api/withdrawal')
 def withdrawal():
+
+    u, f = auth()
+
+    if f:
+        return f
+
+    uid = int(u['id'])
+
+    owned = egg_counts(uid)
+
+    eggs = {
+        str(i): {
+            'id': i,
+            'name': EGGS[i][0],
+            'count': count
+        }
+
+        for i, count
+        in (
+            (
+                int(key),
+                value
+            )
+            for key, value
+            in owned.items()
+        )
+
+        if count > 0
+    }
+
+    return jsonify(
+        ok=True,
+        bot=WITHDRAWAL_BOT,
+        total=sum(
+            owned.values()
+        ),
+        eggs=eggs
+    )
+
+
+# =========================================================
+# CHESTS
+# =========================================================
+
+@app.get('/api/chests')
+def api_chests():
+
+    u, f = auth()
+
+    if f:
+        return f
+
+    uid = int(u['id'])
+
+    conn = extra_conn()
+
+    rows = conn.execute(
+        '''
+        SELECT chest_id, count
+        FROM chest_opens
+        WHERE user_id=?
+        ''',
+        (uid,)
+    ).fetchall()
+
+    conn.close()
+
+    opened = {
+        int(row['chest_id']):
+            int(row['count'])
+        for row in rows
+    }
+
+    return jsonify(
+        ok=True,
+
+        chests={
+            str(i): {
+                'id': i,
+                'name': chest[0],
+                'price': chest[1],
+                'egg_chance': chest[2],
+                'opened':
+                    opened.get(i, 0)
+            }
+
+            for i, chest
+            in CHESTS.items()
+        }
+    )
+
+
+# =========================================================
+# OPEN CHEST
+# =========================================================
+
+@app.post('/api/chests/open')
+def api_chest_open():
+
+    u, f = auth()
+
+    if f:
+        return f
+
+    uid = int(u['id'])
 
     try:
 
-        user = get_current_user()
-
-        user_id = uid_from_user(
-            user
-        )
-
-        player_eggs = (
-            database.get_player_eggs(
-                user_id
+        chest_id = int(
+            (request.json or {}).get(
+                'chest_id'
             )
         )
 
-        eggs = {}
+    except (
+        TypeError,
+        ValueError
+    ):
 
-        for egg_id in player_eggs:
-
-            egg_id = int(
-                egg_id
-            )
-
-            if egg_id not in EGGS:
-                continue
-
-            key = str(
-                egg_id
-            )
-
-            if key not in eggs:
-
-                eggs[key] = {
-
-                    "id":
-                        egg_id,
-
-                    "name":
-                        EGGS[egg_id]["name"],
-
-                    "rarity":
-                        EGGS[egg_id]["rarity"],
-
-                    "count":
-                        0
-                }
-
-            eggs[key]["count"] += 1
-
-        total_eggs = sum(
-
-            item["count"]
-
-            for item in eggs.values()
+        return json_error(
+            'Неверный сундук.'
         )
 
-        shop = {}
+    if chest_id not in CHESTS:
 
-        for egg_id, egg in EGGS.items():
+        return json_error(
+            'Такого сундука нет.'
+        )
 
-            shop[str(egg_id)] = {
+    price = CHESTS[chest_id][1]
 
-                "id":
-                    egg_id,
+    if not database.remove_egg_coins(
+        uid,
+        price
+    ):
 
-                "name":
-                    egg["name"],
+        return json_error(
+            'Недостаточно Egg Coins.'
+        )
 
-                "price":
-                    egg["price"],
+    # Pet chest
+    if (
+        chest_id == 7
+        and random.random() < 0.70
+    ):
 
-                "rarity":
-                    egg["rarity"]
+        pet_id = random.choices(
+            list(PETS),
+            weights=[
+                45,
+                25,
+                15,
+                8,
+                5,
+                1.5,
+                0.5
+            ]
+        )[0]
+
+        conn = extra_conn()
+
+        conn.execute(
+            '''
+            INSERT OR IGNORE INTO player_pets(
+                user_id,
+                pet_id,
+                active
+            )
+            VALUES(?,?,0)
+            ''',
+            (
+                uid,
+                pet_id
+            )
+        )
+
+        conn.commit()
+        conn.close()
+
+        result = {
+            'type': 'pet',
+
+            'pet': {
+                'id': pet_id,
+                'name': PETS[pet_id][0],
+                'rarity': PETS[pet_id][1],
+                'bonus': PETS[pet_id][2]
+            }
+        }
+
+    elif (
+        random.random() * 100
+        < CHESTS[chest_id][2]
+    ):
+
+        egg_id = chest_egg()
+
+        database.add_egg(
+            uid,
+            egg_id
+        )
+
+        progress_daily(
+            uid,
+            'egg'
+        )
+
+        result = {
+            'type': 'egg',
+
+            'egg': {
+                'id': egg_id,
+                'name': EGGS[egg_id][0],
+                'rarity': EGGS[egg_id][2]
+            }
+        }
+
+    else:
+
+        roll = random.random()
+
+        if roll < 0.65:
+
+            amount = (
+                random.randint(20, 60)
+                * (chest_id + 1)
+            )
+
+            database.add_egg_coins(
+                uid,
+                amount
+            )
+
+            result = {
+                'type': 'coins',
+                'amount': amount
             }
 
-        return jsonify({
+        elif roll < 0.90:
 
-            "ok":
-                True,
+            item_id = random.choices(
+                [1, 2, 3],
+                [45, 35, 20]
+            )[0]
 
-            "bot":
-                WITHDRAWAL_BOT,
+            database.add_item(
+                uid,
+                item_id
+            )
 
-            "tap_coins":
-                database.get_tap_coins(
-                    user_id
-                ),
+            result = {
+                'type': 'booster',
 
-            "egg_coins":
-                database.get_egg_coins(
-                    user_id
-                ),
+                'item': {
+                    'id': item_id,
+                    'name': ITEMS[item_id][0]
+                }
+            }
 
-            "eggs":
-                eggs,
+        else:
 
-            "shop":
-                shop,
+            amount = (
+                random.randint(20, 80)
+                * chest_id
+            )
 
-            "total_eggs":
-                total_eggs,
+            database.add_xp(
+                uid,
+                amount
+            )
 
-            "total":
-                total_eggs
+            result = {
+                'type': 'xp',
+                'amount': amount
+            }
+
+    conn = extra_conn()
+
+    conn.execute(
+        '''
+        INSERT INTO chest_opens(
+            user_id,
+            chest_id,
+            count
+        )
+        VALUES(?,?,1)
+
+        ON CONFLICT(user_id,chest_id)
+        DO UPDATE SET
+            count=count+1
+        ''',
+        (
+            uid,
+            chest_id
+        )
+    )
+
+    conn.commit()
+    conn.close()
+
+    progress_daily(
+        uid,
+        'chest'
+    )
+
+    add_pass_xp(
+        uid,
+        10
+    )
+
+    return jsonify(
+        ok=True,
+        reward=result,
+        data=snap(uid)
+    )
+
+
+# =========================================================
+# PETS
+# =========================================================
+
+@app.get('/api/pets')
+def api_pets():
+
+    u, f = auth()
+
+    if f:
+        return f
+
+    uid = int(u['id'])
+
+    conn = extra_conn()
+
+    rows = conn.execute(
+        '''
+        SELECT pet_id, active
+        FROM player_pets
+        WHERE user_id=?
+        ''',
+        (uid,)
+    ).fetchall()
+
+    conn.close()
+
+    owned = {
+        int(row['pet_id']):
+            int(row['active'])
+        for row in rows
+    }
+
+    return jsonify(
+        ok=True,
+
+        pets={
+            str(i): {
+                'id': i,
+                'name': pet[0],
+                'rarity': pet[1],
+                'bonus': pet[2],
+                'owned': i in owned,
+                'active':
+                    bool(
+                        owned.get(i, 0)
+                    )
+            }
+
+            for i, pet
+            in PETS.items()
+        }
+    )
+
+
+# =========================================================
+# ACTIVATE PET
+# =========================================================
+
+@app.post('/api/pets/activate')
+def api_pet_activate():
+
+    u, f = auth()
+
+    if f:
+        return f
+
+    uid = int(u['id'])
+
+    try:
+
+        pet_id = int(
+            (request.json or {}).get(
+                'pet_id'
+            )
+        )
+
+    except (
+        TypeError,
+        ValueError
+    ):
+
+        return json_error(
+            'Неверный питомец.'
+        )
+
+    if pet_id not in PETS:
+
+        return json_error(
+            'Такого питомца нет.'
+        )
+
+    conn = extra_conn()
+
+    owned = conn.execute(
+        '''
+        SELECT 1
+        FROM player_pets
+        WHERE user_id=?
+        AND pet_id=?
+        ''',
+        (
+            uid,
+            pet_id
+        )
+    ).fetchone()
+
+    if not owned:
+
+        conn.close()
+
+        return json_error(
+            'У тебя нет этого питомца.'
+        )
+
+    conn.execute(
+        '''
+        UPDATE player_pets
+        SET active=0
+        WHERE user_id=?
+        ''',
+        (uid,)
+    )
+
+    conn.execute(
+        '''
+        UPDATE player_pets
+        SET active=1
+        WHERE user_id=?
+        AND pet_id=?
+        ''',
+        (
+            uid,
+            pet_id
+        )
+    )
+
+    conn.commit()
+    conn.close()
+
+    return jsonify(
+        ok=True,
+        data=snap(uid)
+    )
+
+
+# =========================================================
+# MARKET
+# =========================================================
+
+@app.get('/api/market')
+def api_market():
+
+    u, f = auth()
+
+    if f:
+        return f
+
+    rarity = request.args.get(
+        'rarity',
+        ''
+    )
+
+    search = request.args.get(
+        'search',
+        ''
+    ).lower()
+
+    conn = extra_conn()
+
+    rows = conn.execute(
+        '''
+        SELECT *
+        FROM market_listings
+        WHERE sold=0
+        ORDER BY id DESC
+        LIMIT 100
+        '''
+    ).fetchall()
+
+    conn.close()
+
+    listings = []
+
+    for row in rows:
+
+        egg = EGGS.get(
+            int(row['egg_id'])
+        )
+
+        if not egg:
+            continue
+
+        if (
+            rarity
+            and egg[2] != rarity
+        ):
+            continue
+
+        if (
+            search
+            and search not in egg[0].lower()
+        ):
+            continue
+
+        listings.append({
+            'id': row['id'],
+            'seller_id': row['seller_id'],
+            'egg_id': row['egg_id'],
+            'name': egg[0],
+            'rarity': egg[2],
+            'price': row['price'],
+            'fee': max(
+                1,
+                int(row['price'] * 0.05)
+            ),
+            'created_at':
+                row['created_at']
         })
 
-    except Exception as e:
-
-        return jsonify({
-
-            "ok":
-                False,
-
-            "error":
-                str(e)
-        }), 400
-
-
-# =========================================================
-# HEALTH CHECK
-# =========================================================
-
-@app.get("/")
-def index():
-
-    return jsonify({
-
-        "ok":
-            True,
-
-        "name":
-            "STEAL THE EGG SERVER",
-
-        "status":
-            "online"
-    })
-
-
-@app.get("/health")
-def health():
-
-    return jsonify({
-
-        "ok":
-            True
-    })
-
-
-# =========================================================
-# RUN
-# =========================================================
-
-if __name__ == "__main__":
-
-    print(
-        "BOT_TOKEN:",
-        "SET" if BOT_TOKEN else "NOT SET"
+    return jsonify(
+        ok=True,
+        listings=listings
     )
 
-    print(
-        "BOT_TOKEN length:",
-        len(BOT_TOKEN)
+
+# =========================================================
+# MARKET LIST
+# =========================================================
+
+@app.post('/api/market/list')
+def api_market_list():
+
+    u, f = auth()
+
+    if f:
+        return f
+
+    uid = int(u['id'])
+
+    data = request.json or {}
+
+    try:
+
+        egg_id = int(
+            data.get('egg_id')
+        )
+
+        price = int(
+            data.get('price')
+        )
+
+    except (
+        TypeError,
+        ValueError
+    ):
+
+        return json_error(
+            'Неверные данные.'
+        )
+
+    if egg_id not in EGGS:
+
+        return json_error(
+            'Такого яйца нет.'
+        )
+
+    if not 1 <= price <= 10000000:
+
+        return json_error(
+            'Цена должна быть от 1 до 10 000 000.'
+        )
+
+    if not database.remove_one_egg(
+        uid,
+        egg_id
+    ):
+
+        return json_error(
+            'У тебя нет этого яйца.'
+        )
+
+    conn = extra_conn()
+
+    conn.execute(
+        '''
+        INSERT INTO market_listings(
+            seller_id,
+            egg_id,
+            price,
+            created_at,
+            sold
+        )
+        VALUES(?,?,?,?,0)
+        ''',
+        (
+            uid,
+            egg_id,
+            price,
+            int(time.time())
+        )
     )
 
-    print(
-        f"Server starting on port {PORT}"
+    conn.commit()
+    conn.close()
+
+    return jsonify(
+        ok=True,
+        data=snap(uid)
     )
+
+
+# =========================================================
+# MARKET BUY
+# =========================================================
+
+@app.post('/api/market/buy')
+def api_market_buy():
+
+    u, f = auth()
+
+    if f:
+        return f
+
+    uid = int(u['id'])
+
+    try:
+
+        listing_id = int(
+            (request.json or {}).get(
+                'listing_id'
+            )
+        )
+
+    except (
+        TypeError,
+        ValueError
+    ):
+
+        return json_error(
+            'Неверный лот.'
+        )
+
+    conn = extra_conn()
+
+    row = conn.execute(
+        '''
+        SELECT *
+        FROM market_listings
+        WHERE id=?
+        AND sold=0
+        ''',
+        (listing_id,)
+    ).fetchone()
+
+    if not row:
+
+        conn.close()
+
+        return json_error(
+            'Лот уже продан.'
+        )
+
+    if row['seller_id'] == uid:
+
+        conn.close()
+
+        return json_error(
+            'Нельзя купить свой лот.'
+        )
+
+    total = (
+        int(row['price'])
+        + max(
+            1,
+            int(row['price'] * 0.05)
+        )
+    )
+
+    if not database.remove_egg_coins(
+        uid,
+        total
+    ):
+
+        conn.close()
+
+        return json_error(
+            f'Нужно {total} Egg Coins.'
+        )
+
+    database.add_egg(
+        uid,
+        row['egg_id']
+    )
+
+    database.add_egg_coins(
+        row['seller_id'],
+        row['price']
+    )
+
+    conn.execute(
+        '''
+        UPDATE market_listings
+        SET sold=1
+        WHERE id=?
+        ''',
+        (listing_id,)
+    )
+
+    conn.commit()
+    conn.close()
+
+    progress_daily(
+        uid,
+        'market'
+    )
+
+    return jsonify(
+        ok=True,
+
+        bought={
+            'egg_id': row['egg_id'],
+            'name': EGGS[row['egg_id']][0],
+            'price': row['price']
+        },
+
+        data=snap(uid)
+    )
+
+
+# =========================================================
+# MARKET CANCEL
+# =========================================================
+
+@app.post('/api/market/cancel')
+def api_market_cancel():
+
+    u, f = auth()
+
+    if f:
+        return f
+
+    uid = int(u['id'])
+
+    try:
+
+        listing_id = int(
+            (request.json or {}).get(
+                'listing_id'
+            )
+        )
+
+    except (
+        TypeError,
+        ValueError
+    ):
+
+        return json_error(
+            'Неверный лот.'
+        )
+
+    conn = extra_conn()
+
+    row = conn.execute(
+        '''
+        SELECT *
+        FROM market_listings
+        WHERE id=?
+        AND seller_id=?
+        AND sold=0
+        ''',
+        (
+            listing_id,
+            uid
+        )
+    ).fetchone()
+
+    if not row:
+
+        conn.close()
+
+        return json_error(
+            'Лот не найден.'
+        )
+
+    database.add_egg(
+        uid,
+        row['egg_id']
+    )
+
+    conn.execute(
+        '''
+        UPDATE market_listings
+        SET sold=1
+        WHERE id=?
+        ''',
+        (listing_id,)
+    )
+
+    conn.commit()
+    conn.close()
+
+    return jsonify(
+        ok=True,
+        data=snap(uid)
+    )
+
+
+# =========================================================
+# BOSS
+# =========================================================
+
+def get_boss():
+
+    now = int(
+        time.time()
+    )
+
+    conn = extra_conn()
+
+    row = conn.execute(
+        '''
+        SELECT *
+        FROM boss_event
+        WHERE id=1
+        '''
+    ).fetchone()
+
+    if (
+        not row
+        or now >= row['ends_at']
+        or (
+            row['hp'] <= 0
+            and row['reward_claimed']
+        )
+    ):
+
+        conn.execute(
+            'DELETE FROM boss_contributions'
+        )
+
+        conn.execute(
+            '''
+            INSERT INTO boss_event(
+                id,
+                hp,
+                max_hp,
+                started_at,
+                ends_at,
+                reward_claimed
+            )
+            VALUES(1,?,?,?,?,0)
+
+            ON CONFLICT(id)
+            DO UPDATE SET
+                hp=excluded.hp,
+                max_hp=excluded.max_hp,
+                started_at=excluded.started_at,
+                ends_at=excluded.ends_at,
+                reward_claimed=0
+            ''',
+            (
+                BOSS_MAX_HP,
+                BOSS_MAX_HP,
+                now,
+                now + 86400
+            )
+        )
+
+        conn.commit()
+
+        row = conn.execute(
+            '''
+            SELECT *
+            FROM boss_event
+            WHERE id=1
+            '''
+        ).fetchone()
+
+    conn.close()
+
+    return dict(row)
+
+
+# =========================================================
+# BOSS INFO
+# =========================================================
+
+@app.get('/api/boss')
+def api_boss():
+
+    u, f = auth()
+
+    if f:
+        return f
+
+    uid = int(u['id'])
+
+    boss = get_boss()
+
+    conn = extra_conn()
+
+    my_damage = conn.execute(
+        '''
+        SELECT damage
+        FROM boss_contributions
+        WHERE user_id=?
+        ''',
+        (uid,)
+    ).fetchone()
+
+    top = conn.execute(
+        '''
+        SELECT user_id, damage
+        FROM boss_contributions
+        ORDER BY damage DESC
+        LIMIT 10
+        '''
+    ).fetchall()
+
+    conn.close()
+
+    return jsonify(
+        ok=True,
+
+        hp=boss['hp'],
+
+        max_hp=boss['max_hp'],
+
+        ends_at=boss['ends_at'],
+
+        my_damage=(
+            my_damage['damage']
+            if my_damage
+            else 0
+        ),
+
+        leaderboard=[
+            {
+                'user_id': row['user_id'],
+                'damage': row['damage']
+            }
+
+            for row in top
+        ]
+    )
+
+
+# =========================================================
+# BOSS ATTACK
+# =========================================================
+
+@app.post('/api/boss/attack')
+def api_boss_attack():
+
+    u, f = auth()
+
+    if f:
+        return f
+
+    uid = int(u['id'])
+
+    now = time.time()
+
+    if (
+        now - last_boss.get(uid, 0)
+        < 0.7
+    ):
+
+        return json_error(
+            'Подожди немного.',
+            429
+        )
+
+    last_boss[uid] = now
+
+    boss = get_boss()
+
+    damage = min(
+        random.randint(20, 60),
+        boss['hp']
+    )
+
+    conn = extra_conn()
+
+    conn.execute(
+        '''
+        UPDATE boss_event
+        SET hp=hp-?
+        WHERE id=1
+        ''',
+        (damage,)
+    )
+
+    conn.execute(
+        '''
+        INSERT INTO boss_contributions(
+            user_id,
+            damage
+        )
+        VALUES(?,?)
+
+        ON CONFLICT(user_id)
+        DO UPDATE SET
+            damage=damage+excluded.damage
+        ''',
+        (
+            uid,
+            damage
+        )
+    )
+
+    conn.commit()
+    conn.close()
+
+    database.add_boss_damage(
+        uid,
+        damage
+    )
+
+    progress_daily(
+        uid,
+        'boss',
+        damage
+    )
+
+    add_pass_xp(
+        uid,
+        max(
+            1,
+            damage // 5
+        )
+    )
+
+    new_hp = max(
+        0,
+        boss['hp'] - damage
+    )
+
+    return jsonify(
+        ok=True,
+
+        damage=damage,
+
+        hp=new_hp,
+
+        max_hp=BOSS_MAX_HP,
+
+        defeated=(
+            new_hp <= 0
+        ),
+
+        data=snap(uid),
+
+        new_achievements=
+            achievements(uid)
+    )
+
+
+# =========================================================
+# EGG PASS
+# =========================================================
+
+@app.get('/api/egg-pass')
+def api_pass():
+
+    u, f = auth()
+
+    if f:
+        return f
+
+    uid = int(u['id'])
+
+    conn = extra_conn()
+
+    row = conn.execute(
+        '''
+        SELECT *
+        FROM egg_pass
+        WHERE user_id=?
+        ''',
+        (uid,)
+    ).fetchone()
+
+    if not row:
+
+        conn.execute(
+            '''
+            INSERT INTO egg_pass(
+                user_id,
+                xp,
+                level
+            )
+            VALUES(?,?,?)
+            ''',
+            (
+                uid,
+                0,
+                0
+            )
+        )
+
+        conn.commit()
+
+        row = conn.execute(
+            '''
+            SELECT *
+            FROM egg_pass
+            WHERE user_id=?
+            ''',
+            (uid,)
+        ).fetchone()
+
+    claims = conn.execute(
+        '''
+        SELECT level, track
+        FROM egg_pass_claims
+        WHERE user_id=?
+        ''',
+        (uid,)
+    ).fetchall()
+
+    conn.close()
+
+    claimed = {
+        f"{claim['level']}:{claim['track']}"
+        for claim in claims
+    }
+
+    levels = []
+
+    for level in range(
+        1,
+        PASS_MAX + 1
+    ):
+
+        levels.append({
+            'level': level,
+
+            'free_coins':
+                20 + level * 5,
+
+            'premium_coins':
+                50 + level * 10,
+
+            'free_claimed':
+                f'{level}:free'
+                in claimed,
+
+            'premium_claimed':
+                f'{level}:premium'
+                in claimed
+        })
+
+    return jsonify(
+        ok=True,
+
+        state={
+            'xp': row['xp'],
+            'level': row['level']
+        },
+
+        levels=levels
+    )
+
+
+# =========================================================
+# EGG PASS CLAIM
+# =========================================================
+
+@app.post('/api/egg-pass/claim')
+def api_pass_claim():
+
+    u, f = auth()
+
+    if f:
+        return f
+
+    uid = int(u['id'])
+
+    data = request.json or {}
+
+    try:
+
+        level = int(
+            data.get('level')
+        )
+
+    except (
+        TypeError,
+        ValueError
+    ):
+
+        return json_error(
+            'Неверный уровень.'
+        )
+
+    track = data.get(
+        'track',
+        'free'
+    )
+
+    if (
+        not 1 <= level <= PASS_MAX
+        or track not in (
+            'free',
+            'premium'
+        )
+    ):
+
+        return json_error(
+            'Неверная награда.'
+        )
+
+    conn = extra_conn()
+
+    row = conn.execute(
+        '''
+        SELECT level
+        FROM egg_pass
+        WHERE user_id=?
+        ''',
+        (uid,)
+    ).fetchone()
+
+    current_level = (
+        int(row['level'])
+        if row
+        else 0
+    )
+
+    if current_level < level:
+
+        conn.close()
+
+        return json_error(
+            'Этот уровень ещё не достигнут.'
+        )
+
+    already = conn.execute(
+        '''
+        SELECT 1
+        FROM egg_pass_claims
+        WHERE user_id=?
+        AND level=?
+        AND track=?
+        ''',
+        (
+            uid,
+            level,
+            track
+        )
+    ).fetchone()
+
+    if already:
+
+        conn.close()
+
+        return json_error(
+            'Награда уже получена.'
+        )
+
+    conn.execute(
+        '''
+        INSERT INTO egg_pass_claims(
+            user_id,
+            level,
+            track
+        )
+        VALUES(?,?,?)
+        ''',
+        (
+            uid,
+            level,
+            track
+        )
+    )
+
+    conn.commit()
+    conn.close()
+
+    if track == 'free':
+
+        reward = (
+            20
+            + level * 5
+        )
+
+    else:
+
+        reward = (
+            50
+            + level * 10
+        )
+
+    database.add_egg_coins(
+        uid,
+        reward
+    )
+
+    return jsonify(
+        ok=True,
+        reward=reward,
+        data=snap(uid)
+    )
+
+
+# =========================================================
+# STEAL PLAYERS
+# =========================================================
+
+@app.get('/api/steal/players')
+def api_steal_players():
+
+    u, f = auth()
+
+    if f:
+        return f
+
+    uid = int(u['id'])
+
+    players = database.get_top_players(
+        30
+    )
+
+    result = []
+
+    for player in players:
+
+        player_id = int(
+            player['user_id']
+        )
+
+        if player_id == uid:
+            continue
+
+        result.append({
+            'user_id': player_id,
+
+            'username':
+                player.get(
+                    'username',
+                    ''
+                ) or 'Игрок',
+
+            'avatar':
+                database.get_avatar(
+                    player_id
+                ),
+
+            'eggs':
+                database.get_total_eggs(
+                    player_id
+                )
+        })
+
+    return jsonify(
+        ok=True,
+        players=result[:20]
+    )
+
+
+# =========================================================
+# STEAL
+# =========================================================
+
+@app.post('/api/steal')
+def api_steal():
+
+    u, f = auth()
+
+    if f:
+        return f
+
+    uid = int(u['id'])
+
+    data = request.json or {}
+
+    try:
+
+        target = int(
+            data.get('target_id')
+        )
+
+    except (
+        TypeError,
+        ValueError
+    ):
+
+        return json_error(
+            'Неверный игрок.'
+        )
+
+    if target == uid:
+
+        return json_error(
+            'Нельзя красть у себя.'
+        )
+
+    now = time.time()
+
+    previous = last_steal.get(
+        uid,
+        0
+    )
+
+    if (
+        now - previous
+        < 300
+    ):
+
+        remaining = int(
+            300 - (
+                now - previous
+            )
+        )
+
+        return json_error(
+            f'Красть можно раз в 5 минут. '
+            f'Осталось {remaining} сек.'
+        )
+
+    conn = extra_conn()
+
+    protection = conn.execute(
+        '''
+        SELECT until_ts
+        FROM egg_protection
+        WHERE user_id=?
+        ''',
+        (target,)
+    ).fetchone()
+
+    conn.close()
+
+    if (
+        protection
+        and protection['until_ts'] > now
+    ):
+
+        return json_error(
+            'У игрока сейчас защита от кражи.'
+        )
+
+    eggs = database.get_player_eggs(
+        target
+    )
+
+    if not eggs:
+
+        return json_error(
+            'У игрока нет яиц.'
+        )
+
+    egg_id = random.choice(
+        eggs
+    )
+
+    rarity = EGGS.get(
+        egg_id,
+        (
+            '',
+            0,
+            '⚪ Обычное'
+        )
+    )[2]
+
+    chances = {
+        '⚪ Обычное': 55,
+        '🟢 Необычное': 48,
+        '🔵 Редкое': 40,
+        '🟣 Эпическое': 33,
+        '🟡 Легендарное': 27,
+        '🔴 Мифическое': 20,
+        '💠 Божественное': 12,
+        '🌈 Секретное': 5
+    }
+
+    chance = chances.get(
+        rarity,
+        30
+    )
+
+    success = (
+        random.random() * 100
+        < chance
+    )
+
+    last_steal[uid] = now
+
+    conn = extra_conn()
+
+    conn.execute(
+        '''
+        INSERT INTO steal_log(
+            attacker_id,
+            defender_id,
+            egg_id,
+            success,
+            created_at
+        )
+        VALUES(?,?,?,?,?)
+        ''',
+        (
+            uid,
+            target,
+            egg_id,
+            int(success),
+            int(now)
+        )
+    )
+
+    if (
+        success
+        and database.remove_one_egg(
+            target,
+            egg_id
+        )
+    ):
+
+        database.add_egg(
+            uid,
+            egg_id
+        )
+
+        conn.execute(
+            '''
+            INSERT INTO egg_protection(
+                user_id,
+                until_ts
+            )
+            VALUES(?,?)
+
+            ON CONFLICT(user_id)
+            DO UPDATE SET
+                until_ts=excluded.until_ts
+            ''',
+            (
+                target,
+                int(now) + 1800
+            )
+        )
+
+        conn.commit()
+        conn.close()
+
+        add_pass_xp(
+            uid,
+            25
+        )
+
+        return jsonify(
+            ok=True,
+
+            success=True,
+
+            egg={
+                'id': egg_id,
+                'name': EGGS[egg_id][0],
+                'rarity': rarity
+            },
+
+            data=snap(uid)
+        )
+
+    conn.commit()
+    conn.close()
+
+    return jsonify(
+        ok=True,
+        success=False,
+        message=(
+            'Кража не удалась. '
+            'Игрок заметил попытку.'
+        )
+    )
+
+
+# =========================================================
+# START SERVER
+# =========================================================
+
+if __name__ == '__main__':
+
+    database.init_database()
 
     app.run(
-        host="0.0.0.0",
-        port=PORT
+        host='0.0.0.0',
+        port=PORT,
+        debug=False
     )
