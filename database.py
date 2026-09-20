@@ -1,6 +1,6 @@
 import sqlite3
 from pathlib import Path
-from datetime import date
+from datetime import date, datetime
 
 
 # =========================================================
@@ -140,6 +140,250 @@ def init_database():
                 task_date,
                 task_id
             )
+        )
+    """)
+
+    # =====================================================
+    # EGG METADATA
+    #
+    # Здесь хранится информация о яйцах.
+    # Сами яйца игроков находятся в player_eggs.
+    # =====================================================
+
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS egg_types (
+
+            egg_id INTEGER PRIMARY KEY,
+
+            name TEXT NOT NULL,
+
+            rarity TEXT NOT NULL,
+
+            rarity_order INTEGER NOT NULL DEFAULT 1,
+
+            marketable INTEGER NOT NULL DEFAULT 1
+        )
+    """)
+
+    # =====================================================
+    # CHESTS
+    # =====================================================
+
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS player_chests (
+
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+
+            user_id INTEGER NOT NULL,
+
+            chest_id INTEGER NOT NULL,
+
+            created_at TEXT NOT NULL
+        )
+    """)
+
+    # =====================================================
+    # PETS
+    # =====================================================
+
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS pets (
+
+            pet_id INTEGER PRIMARY KEY,
+
+            name TEXT NOT NULL,
+
+            rarity TEXT NOT NULL,
+
+            bonus_type TEXT NOT NULL,
+
+            bonus_value REAL NOT NULL DEFAULT 0
+        )
+    """)
+
+    # =====================================================
+    # PLAYER PETS
+    # =====================================================
+
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS player_pets (
+
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+
+            user_id INTEGER NOT NULL,
+
+            pet_id INTEGER NOT NULL,
+
+            active INTEGER NOT NULL DEFAULT 0,
+
+            created_at TEXT NOT NULL
+        )
+    """)
+
+    # =====================================================
+    # MARKET LISTINGS
+    #
+    # Яйцо удаляется у продавца при создании объявления.
+    # При покупке оно переходит покупателю.
+    # =====================================================
+
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS market_listings (
+
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+
+            seller_id INTEGER NOT NULL,
+
+            egg_id INTEGER NOT NULL,
+
+            price INTEGER NOT NULL,
+
+            status TEXT NOT NULL DEFAULT 'active',
+
+            buyer_id INTEGER,
+
+            created_at TEXT NOT NULL,
+
+            sold_at TEXT
+        )
+    """)
+
+    # =====================================================
+    # THEFT / STEAL SYSTEM
+    # =====================================================
+
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS steal_attempts (
+
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+
+            thief_id INTEGER NOT NULL,
+
+            victim_id INTEGER NOT NULL,
+
+            egg_id INTEGER NOT NULL,
+
+            success INTEGER NOT NULL DEFAULT 0,
+
+            created_at TEXT NOT NULL
+        )
+    """)
+
+    # =====================================================
+    # EGG PROTECTION
+    # =====================================================
+
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS egg_protection (
+
+            user_id INTEGER PRIMARY KEY,
+
+            protection_until TEXT
+        )
+    """)
+
+    # =====================================================
+    # BOSS EVENT
+    # =====================================================
+
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS boss_event (
+
+            id INTEGER PRIMARY KEY CHECK (id = 1),
+
+            boss_name TEXT NOT NULL DEFAULT 'Король Яиц',
+
+            max_hp INTEGER NOT NULL DEFAULT 100000,
+
+            current_hp INTEGER NOT NULL DEFAULT 100000,
+
+            started_at TEXT,
+
+            ends_at TEXT,
+
+            active INTEGER NOT NULL DEFAULT 0,
+
+            reward_claimed INTEGER NOT NULL DEFAULT 0
+        )
+    """)
+
+    # =====================================================
+    # BOSS PARTICIPATION
+    # =====================================================
+
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS boss_participants (
+
+            user_id INTEGER PRIMARY KEY,
+
+            damage INTEGER NOT NULL DEFAULT 0,
+
+            reward_claimed INTEGER NOT NULL DEFAULT 0
+        )
+    """)
+
+    # =====================================================
+    # EGG PASS
+    # =====================================================
+
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS egg_pass (
+
+            user_id INTEGER PRIMARY KEY,
+
+            xp INTEGER NOT NULL DEFAULT 0,
+
+            level INTEGER NOT NULL DEFAULT 1,
+
+            premium INTEGER NOT NULL DEFAULT 0
+        )
+    """)
+
+    # =====================================================
+    # EGG PASS CLAIMS
+    # =====================================================
+
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS egg_pass_claims (
+
+            user_id INTEGER NOT NULL,
+
+            level INTEGER NOT NULL,
+
+            track TEXT NOT NULL,
+
+            PRIMARY KEY (
+                user_id,
+                level,
+                track
+            )
+        )
+    """)
+
+    # =====================================================
+    # DAILY QUESTS
+    # =====================================================
+
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS daily_quests (
+
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+
+            user_id INTEGER NOT NULL,
+
+            task_date TEXT NOT NULL,
+
+            quest_id INTEGER NOT NULL,
+
+            progress INTEGER NOT NULL DEFAULT 0,
+
+            target INTEGER NOT NULL DEFAULT 1,
+
+            reward_type TEXT NOT NULL,
+
+            reward_amount INTEGER NOT NULL DEFAULT 0,
+
+            claimed INTEGER NOT NULL DEFAULT 0
         )
     """)
 
@@ -345,6 +589,27 @@ def init_database():
             )
 
             cur.execute(query)
+
+    # =====================================================
+    # DEFAULT BOSS
+    # =====================================================
+
+    cur.execute("""
+        INSERT OR IGNORE INTO boss_event (
+            id,
+            boss_name,
+            max_hp,
+            current_hp,
+            active
+        )
+        VALUES (
+            1,
+            'Король Яиц',
+            100000,
+            100000,
+            0
+        )
+    """)
 
     conn.commit()
     conn.close()
@@ -750,6 +1015,76 @@ def get_total_eggs(user_id):
 
 
 # =========================================================
+# EGG RARITIES
+# =========================================================
+
+def add_egg_type(
+    egg_id,
+    name,
+    rarity,
+    rarity_order=1,
+    marketable=1
+):
+
+    conn = get_connection()
+
+    conn.execute("""
+        INSERT OR REPLACE INTO egg_types (
+            egg_id,
+            name,
+            rarity,
+            rarity_order,
+            marketable
+        )
+        VALUES (?, ?, ?, ?, ?)
+    """, (
+        int(egg_id),
+        name,
+        rarity,
+        int(rarity_order),
+        int(marketable)
+    ))
+
+    conn.commit()
+    conn.close()
+
+
+def get_egg_type(egg_id):
+
+    conn = get_connection()
+
+    row = conn.execute("""
+        SELECT *
+        FROM egg_types
+        WHERE egg_id = ?
+    """, (
+        int(egg_id),
+    )).fetchone()
+
+    conn.close()
+
+    return dict(row) if row else None
+
+
+def get_all_egg_types():
+
+    conn = get_connection()
+
+    rows = conn.execute("""
+        SELECT *
+        FROM egg_types
+        ORDER BY rarity_order ASC, egg_id ASC
+    """).fetchall()
+
+    conn.close()
+
+    return [
+        dict(row)
+        for row in rows
+    ]
+
+
+# =========================================================
 # XP / LEVEL
 # =========================================================
 
@@ -811,7 +1146,6 @@ def add_xp(
 
     new_xp = old_xp + amount
 
-    # 100 XP = +1 уровень.
     new_level = (
         new_xp // 100
     ) + 1
@@ -1226,6 +1560,186 @@ def add_daily_task_claim(
 
 
 # =========================================================
+# ADVANCED DAILY QUESTS
+# =========================================================
+
+def clear_old_daily_quests(user_id):
+
+    today = date.today().isoformat()
+
+    conn = get_connection()
+
+    conn.execute("""
+        DELETE FROM daily_quests
+        WHERE user_id = ?
+          AND task_date != ?
+    """, (
+        int(user_id),
+        today
+    ))
+
+    conn.commit()
+    conn.close()
+
+
+def get_daily_quests(user_id):
+
+    today = date.today().isoformat()
+
+    clear_old_daily_quests(user_id)
+
+    conn = get_connection()
+
+    rows = conn.execute("""
+        SELECT *
+        FROM daily_quests
+        WHERE user_id = ?
+          AND task_date = ?
+        ORDER BY id ASC
+    """, (
+        int(user_id),
+        today
+    )).fetchall()
+
+    conn.close()
+
+    return [
+        dict(row)
+        for row in rows
+    ]
+
+
+def create_daily_quest(
+    user_id,
+    quest_id,
+    target,
+    reward_type,
+    reward_amount
+):
+
+    today = date.today().isoformat()
+
+    conn = get_connection()
+
+    conn.execute("""
+        INSERT INTO daily_quests (
+            user_id,
+            task_date,
+            quest_id,
+            progress,
+            target,
+            reward_type,
+            reward_amount,
+            claimed
+        )
+        VALUES (?, ?, ?, 0, ?, ?, ?, 0)
+    """, (
+        int(user_id),
+        today,
+        int(quest_id),
+        int(target),
+        reward_type,
+        int(reward_amount)
+    ))
+
+    conn.commit()
+    conn.close()
+
+
+def update_daily_quest(
+    user_id,
+    quest_id,
+    amount=1
+):
+
+    today = date.today().isoformat()
+
+    conn = get_connection()
+
+    conn.execute("""
+        UPDATE daily_quests
+
+        SET progress = MIN(
+            progress + ?,
+            target
+        )
+
+        WHERE user_id = ?
+          AND task_date = ?
+          AND quest_id = ?
+          AND claimed = 0
+    """, (
+        int(amount),
+        int(user_id),
+        today,
+        int(quest_id)
+    ))
+
+    conn.commit()
+    conn.close()
+
+
+def claim_daily_quest(
+    user_id,
+    quest_id
+):
+
+    today = date.today().isoformat()
+
+    conn = get_connection()
+
+    row = conn.execute("""
+        SELECT *
+        FROM daily_quests
+
+        WHERE user_id = ?
+          AND task_date = ?
+          AND quest_id = ?
+          AND claimed = 0
+    """, (
+        int(user_id),
+        today,
+        int(quest_id)
+    )).fetchone()
+
+    if not row:
+
+        conn.close()
+
+        raise ValueError(
+            "Задание не найдено"
+        )
+
+    if int(row["progress"]) < int(row["target"]):
+
+        conn.close()
+
+        raise ValueError(
+            "Задание ещё не выполнено"
+        )
+
+    conn.execute("""
+        UPDATE daily_quests
+        SET claimed = 1
+        WHERE user_id = ?
+          AND task_date = ?
+          AND quest_id = ?
+    """, (
+        int(user_id),
+        today,
+        int(quest_id)
+    ))
+
+    conn.commit()
+    conn.close()
+
+    return {
+        "reward_type": row["reward_type"],
+        "reward_amount": int(row["reward_amount"])
+    }
+
+
+# =========================================================
 # ACHIEVEMENTS
 # =========================================================
 
@@ -1417,6 +1931,1405 @@ def get_player_items(user_id):
 
 
 # =========================================================
+# CHESTS
+# =========================================================
+
+def add_chest(
+    user_id,
+    chest_id
+):
+
+    conn = get_connection()
+
+    conn.execute("""
+        INSERT INTO player_chests (
+            user_id,
+            chest_id,
+            created_at
+        )
+        VALUES (?, ?, ?)
+    """, (
+        int(user_id),
+        int(chest_id),
+        datetime.now().isoformat()
+    ))
+
+    conn.commit()
+    conn.close()
+
+
+def get_chest_count(
+    user_id,
+    chest_id
+):
+
+    conn = get_connection()
+
+    row = conn.execute("""
+        SELECT COUNT(*) AS count
+        FROM player_chests
+        WHERE user_id = ?
+          AND chest_id = ?
+    """, (
+        int(user_id),
+        int(chest_id)
+    )).fetchone()
+
+    conn.close()
+
+    return int(row["count"])
+
+
+def get_player_chests(user_id):
+
+    conn = get_connection()
+
+    rows = conn.execute("""
+        SELECT chest_id,
+               COUNT(*) AS count
+        FROM player_chests
+        WHERE user_id = ?
+        GROUP BY chest_id
+        ORDER BY chest_id ASC
+    """, (
+        int(user_id),
+    )).fetchall()
+
+    conn.close()
+
+    return {
+        str(row["chest_id"]):
+            int(row["count"])
+        for row in rows
+    }
+
+
+def remove_chest(
+    user_id,
+    chest_id
+):
+
+    conn = get_connection()
+
+    row = conn.execute("""
+        SELECT id
+        FROM player_chests
+        WHERE user_id = ?
+          AND chest_id = ?
+        ORDER BY id ASC
+        LIMIT 1
+    """, (
+        int(user_id),
+        int(chest_id)
+    )).fetchone()
+
+    if not row:
+
+        conn.close()
+
+        raise ValueError(
+            "Сундук не найден"
+        )
+
+    conn.execute("""
+        DELETE FROM player_chests
+        WHERE id = ?
+    """, (
+        int(row["id"]),
+    ))
+
+    conn.commit()
+    conn.close()
+
+
+# =========================================================
+# PETS
+# =========================================================
+
+def add_pet_type(
+    pet_id,
+    name,
+    rarity,
+    bonus_type,
+    bonus_value
+):
+
+    conn = get_connection()
+
+    conn.execute("""
+        INSERT OR REPLACE INTO pets (
+            pet_id,
+            name,
+            rarity,
+            bonus_type,
+            bonus_value
+        )
+        VALUES (?, ?, ?, ?, ?)
+    """, (
+        int(pet_id),
+        name,
+        rarity,
+        bonus_type,
+        float(bonus_value)
+    ))
+
+    conn.commit()
+    conn.close()
+
+
+def get_pet_type(pet_id):
+
+    conn = get_connection()
+
+    row = conn.execute("""
+        SELECT *
+        FROM pets
+        WHERE pet_id = ?
+    """, (
+        int(pet_id),
+    )).fetchone()
+
+    conn.close()
+
+    return dict(row) if row else None
+
+
+def get_all_pets():
+
+    conn = get_connection()
+
+    rows = conn.execute("""
+        SELECT *
+        FROM pets
+        ORDER BY pet_id ASC
+    """).fetchall()
+
+    conn.close()
+
+    return [
+        dict(row)
+        for row in rows
+    ]
+
+
+def add_pet(
+    user_id,
+    pet_id,
+    active=0
+):
+
+    conn = get_connection()
+
+    conn.execute("""
+        INSERT INTO player_pets (
+            user_id,
+            pet_id,
+            active,
+            created_at
+        )
+        VALUES (?, ?, ?, ?)
+    """, (
+        int(user_id),
+        int(pet_id),
+        int(active),
+        datetime.now().isoformat()
+    ))
+
+    conn.commit()
+    conn.close()
+
+
+def get_player_pets(user_id):
+
+    conn = get_connection()
+
+    rows = conn.execute("""
+        SELECT
+            pp.id,
+            pp.pet_id,
+            pp.active,
+            pp.created_at,
+            p.name,
+            p.rarity,
+            p.bonus_type,
+            p.bonus_value
+
+        FROM player_pets pp
+
+        LEFT JOIN pets p
+            ON p.pet_id = pp.pet_id
+
+        WHERE pp.user_id = ?
+
+        ORDER BY pp.id ASC
+    """, (
+        int(user_id),
+    )).fetchall()
+
+    conn.close()
+
+    return [
+        dict(row)
+        for row in rows
+    ]
+
+
+def get_active_pet(user_id):
+
+    conn = get_connection()
+
+    row = conn.execute("""
+        SELECT
+            pp.id,
+            pp.pet_id,
+            p.name,
+            p.rarity,
+            p.bonus_type,
+            p.bonus_value
+
+        FROM player_pets pp
+
+        LEFT JOIN pets p
+            ON p.pet_id = pp.pet_id
+
+        WHERE pp.user_id = ?
+          AND pp.active = 1
+
+        ORDER BY pp.id ASC
+        LIMIT 1
+    """, (
+        int(user_id),
+    )).fetchone()
+
+    conn.close()
+
+    return dict(row) if row else None
+
+
+def set_active_pet(
+    user_id,
+    player_pet_id
+):
+
+    conn = get_connection()
+
+    row = conn.execute("""
+        SELECT id
+        FROM player_pets
+        WHERE id = ?
+          AND user_id = ?
+    """, (
+        int(player_pet_id),
+        int(user_id)
+    )).fetchone()
+
+    if not row:
+
+        conn.close()
+
+        raise ValueError(
+            "Питомец не найден"
+        )
+
+    conn.execute("""
+        UPDATE player_pets
+        SET active = 0
+        WHERE user_id = ?
+    """, (
+        int(user_id),
+    ))
+
+    conn.execute("""
+        UPDATE player_pets
+        SET active = 1
+        WHERE id = ?
+          AND user_id = ?
+    """, (
+        int(player_pet_id),
+        int(user_id)
+    ))
+
+    conn.commit()
+    conn.close()
+
+
+def remove_pet(
+    user_id,
+    player_pet_id
+):
+
+    conn = get_connection()
+
+    conn.execute("""
+        DELETE FROM player_pets
+        WHERE id = ?
+          AND user_id = ?
+    """, (
+        int(player_pet_id),
+        int(user_id)
+    ))
+
+    conn.commit()
+    conn.close()
+
+
+# =========================================================
+# MARKET
+# =========================================================
+
+def create_market_listing(
+    seller_id,
+    egg_id,
+    price
+):
+
+    price = int(price)
+
+    if price <= 0:
+
+        raise ValueError(
+            "Цена должна быть больше 0"
+        )
+
+    conn = get_connection()
+
+    # Проверяем, есть ли яйцо
+    row = conn.execute("""
+        SELECT id
+        FROM player_eggs
+        WHERE user_id = ?
+          AND egg_id = ?
+        ORDER BY id ASC
+        LIMIT 1
+    """, (
+        int(seller_id),
+        int(egg_id)
+    )).fetchone()
+
+    if not row:
+
+        conn.close()
+
+        raise ValueError(
+            "У тебя нет этого яйца"
+        )
+
+    # Проверяем, можно ли продавать это яйцо
+    egg = conn.execute("""
+        SELECT marketable
+        FROM egg_types
+        WHERE egg_id = ?
+    """, (
+        int(egg_id),
+    )).fetchone()
+
+    if egg and int(egg["marketable"]) == 0:
+
+        conn.close()
+
+        raise ValueError(
+            "Это яйцо нельзя выставить на рынок"
+        )
+
+    # Удаляем яйцо из инвентаря
+    conn.execute("""
+        DELETE FROM player_eggs
+        WHERE id = ?
+    """, (
+        int(row["id"]),
+    ))
+
+    # Создаём объявление
+    cur = conn.execute("""
+        INSERT INTO market_listings (
+            seller_id,
+            egg_id,
+            price,
+            status,
+            created_at
+        )
+        VALUES (?, ?, ?, 'active', ?)
+    """, (
+        int(seller_id),
+        int(egg_id),
+        price,
+        datetime.now().isoformat()
+    ))
+
+    listing_id = cur.lastrowid
+
+    conn.commit()
+    conn.close()
+
+    return listing_id
+
+
+def get_market_listings(
+    egg_id=None,
+    limit=50
+):
+
+    conn = get_connection()
+
+    if egg_id is None:
+
+        rows = conn.execute("""
+            SELECT *
+            FROM market_listings
+
+            WHERE status = 'active'
+
+            ORDER BY price ASC, id ASC
+
+            LIMIT ?
+        """, (
+            int(limit),
+        )).fetchall()
+
+    else:
+
+        rows = conn.execute("""
+            SELECT *
+            FROM market_listings
+
+            WHERE status = 'active'
+              AND egg_id = ?
+
+            ORDER BY price ASC, id ASC
+
+            LIMIT ?
+        """, (
+            int(egg_id),
+            int(limit)
+        )).fetchall()
+
+    conn.close()
+
+    return [
+        dict(row)
+        for row in rows
+    ]
+
+
+def get_market_listing(listing_id):
+
+    conn = get_connection()
+
+    row = conn.execute("""
+        SELECT *
+        FROM market_listings
+        WHERE id = ?
+    """, (
+        int(listing_id),
+    )).fetchone()
+
+    conn.close()
+
+    return dict(row) if row else None
+
+
+def cancel_market_listing(
+    seller_id,
+    listing_id
+):
+
+    conn = get_connection()
+
+    row = conn.execute("""
+        SELECT *
+        FROM market_listings
+
+        WHERE id = ?
+          AND seller_id = ?
+          AND status = 'active'
+    """, (
+        int(listing_id),
+        int(seller_id)
+    )).fetchone()
+
+    if not row:
+
+        conn.close()
+
+        raise ValueError(
+            "Объявление не найдено"
+        )
+
+    # Возвращаем яйцо владельцу
+    conn.execute("""
+        INSERT INTO player_eggs (
+            user_id,
+            egg_id
+        )
+        VALUES (?, ?)
+    """, (
+        int(seller_id),
+        int(row["egg_id"])
+    ))
+
+    conn.execute("""
+        UPDATE market_listings
+        SET status = 'cancelled'
+        WHERE id = ?
+    """, (
+        int(listing_id),
+    ))
+
+    conn.commit()
+    conn.close()
+
+
+def buy_market_listing(
+    buyer_id,
+    listing_id
+):
+
+    buyer_id = int(buyer_id)
+
+    conn = get_connection()
+
+    row = conn.execute("""
+        SELECT *
+        FROM market_listings
+
+        WHERE id = ?
+          AND status = 'active'
+    """, (
+        int(listing_id),
+    )).fetchone()
+
+    if not row:
+
+        conn.close()
+
+        raise ValueError(
+            "Объявление уже недоступно"
+        )
+
+    if int(row["seller_id"]) == buyer_id:
+
+        conn.close()
+
+        raise ValueError(
+            "Нельзя купить собственное яйцо"
+        )
+
+    price = int(row["price"])
+
+    # Сначала списываем деньги атомарно
+    cur = conn.execute("""
+        UPDATE players
+
+        SET egg_coins = egg_coins - ?
+
+        WHERE user_id = ?
+          AND egg_coins >= ?
+    """, (
+        price,
+        buyer_id,
+        price
+    ))
+
+    if cur.rowcount == 0:
+
+        conn.rollback()
+        conn.close()
+
+        raise ValueError(
+            "Недостаточно Egg Coins"
+        )
+
+    # Комиссия рынка 5%
+    fee = max(
+        1,
+        int(price * 0.05)
+    )
+
+    seller_reward = price - fee
+
+    # Деньги продавцу
+    conn.execute("""
+        UPDATE players
+
+        SET egg_coins = egg_coins + ?
+
+        WHERE user_id = ?
+    """, (
+        seller_reward,
+        int(row["seller_id"])
+    ))
+
+    # Яйцо покупателю
+    conn.execute("""
+        INSERT INTO player_eggs (
+            user_id,
+            egg_id
+        )
+        VALUES (?, ?)
+    """, (
+        buyer_id,
+        int(row["egg_id"])
+    ))
+
+    # Закрываем объявление
+    conn.execute("""
+        UPDATE market_listings
+
+        SET status = 'sold',
+            buyer_id = ?,
+            sold_at = ?
+
+        WHERE id = ?
+          AND status = 'active'
+    """, (
+        buyer_id,
+        datetime.now().isoformat(),
+        int(listing_id)
+    ))
+
+    conn.commit()
+    conn.close()
+
+    return {
+        "price": price,
+        "fee": fee,
+        "seller_reward": seller_reward,
+        "egg_id": int(row["egg_id"])
+    }
+
+
+def get_player_market_listings(user_id):
+
+    conn = get_connection()
+
+    rows = conn.execute("""
+        SELECT *
+        FROM market_listings
+
+        WHERE seller_id = ?
+
+        ORDER BY id DESC
+    """, (
+        int(user_id),
+    )).fetchall()
+
+    conn.close()
+
+    return [
+        dict(row)
+        for row in rows
+    ]
+
+
+# =========================================================
+# EGG PROTECTION
+# =========================================================
+
+def set_egg_protection(
+    user_id,
+    seconds
+):
+
+    until = datetime.now().timestamp() + int(seconds)
+
+    conn = get_connection()
+
+    conn.execute("""
+        INSERT OR REPLACE INTO egg_protection (
+            user_id,
+            protection_until
+        )
+        VALUES (?, ?)
+    """, (
+        int(user_id),
+        datetime.fromtimestamp(until).isoformat()
+    ))
+
+    conn.commit()
+    conn.close()
+
+
+def is_egg_protected(user_id):
+
+    conn = get_connection()
+
+    row = conn.execute("""
+        SELECT protection_until
+        FROM egg_protection
+        WHERE user_id = ?
+    """, (
+        int(user_id),
+    )).fetchone()
+
+    conn.close()
+
+    if not row or not row["protection_until"]:
+
+        return False
+
+    try:
+
+        until = datetime.fromisoformat(
+            row["protection_until"]
+        )
+
+        return datetime.now() < until
+
+    except Exception:
+
+        return False
+
+
+# =========================================================
+# THEFT SYSTEM
+# =========================================================
+
+def add_steal_attempt(
+    thief_id,
+    victim_id,
+    egg_id,
+    success
+):
+
+    conn = get_connection()
+
+    conn.execute("""
+        INSERT INTO steal_attempts (
+            thief_id,
+            victim_id,
+            egg_id,
+            success,
+            created_at
+        )
+        VALUES (?, ?, ?, ?, ?)
+    """, (
+        int(thief_id),
+        int(victim_id),
+        int(egg_id),
+        int(success),
+        datetime.now().isoformat()
+    ))
+
+    conn.commit()
+    conn.close()
+
+
+def get_last_steal_attempt(thief_id):
+
+    conn = get_connection()
+
+    row = conn.execute("""
+        SELECT *
+        FROM steal_attempts
+
+        WHERE thief_id = ?
+
+        ORDER BY id DESC
+
+        LIMIT 1
+    """, (
+        int(thief_id),
+    )).fetchone()
+
+    conn.close()
+
+    return dict(row) if row else None
+
+
+def get_steal_attempts_today(thief_id):
+
+    today = date.today().isoformat()
+
+    conn = get_connection()
+
+    row = conn.execute("""
+        SELECT COUNT(*) AS count
+        FROM steal_attempts
+
+        WHERE thief_id = ?
+          AND created_at LIKE ?
+    """, (
+        int(thief_id),
+        today + "%"
+    )).fetchone()
+
+    conn.close()
+
+    return int(row["count"])
+
+
+def transfer_stolen_egg(
+    thief_id,
+    victim_id,
+    egg_id
+):
+
+    thief_id = int(thief_id)
+    victim_id = int(victim_id)
+    egg_id = int(egg_id)
+
+    if thief_id == victim_id:
+
+        raise ValueError(
+            "Нельзя красть яйцо у себя"
+        )
+
+    conn = get_connection()
+
+    row = conn.execute("""
+        SELECT id
+        FROM player_eggs
+
+        WHERE user_id = ?
+          AND egg_id = ?
+
+        ORDER BY id ASC
+
+        LIMIT 1
+    """, (
+        victim_id,
+        egg_id
+    )).fetchone()
+
+    if not row:
+
+        conn.close()
+
+        raise ValueError(
+            "У игрока нет такого яйца"
+        )
+
+    conn.execute("""
+        DELETE FROM player_eggs
+        WHERE id = ?
+    """, (
+        int(row["id"]),
+    ))
+
+    conn.execute("""
+        INSERT INTO player_eggs (
+            user_id,
+            egg_id
+        )
+        VALUES (?, ?)
+    """, (
+        thief_id,
+        egg_id
+    ))
+
+    conn.commit()
+    conn.close()
+
+
+# =========================================================
+# BOSS EVENT
+# =========================================================
+
+def start_boss_event(
+    boss_name="Король Яиц",
+    max_hp=100000,
+    duration_seconds=86400
+):
+
+    now = datetime.now()
+
+    ends = (
+        now.timestamp()
+        + int(duration_seconds)
+    )
+
+    conn = get_connection()
+
+    conn.execute("""
+        UPDATE boss_event
+
+        SET boss_name = ?,
+            max_hp = ?,
+            current_hp = ?,
+            started_at = ?,
+            ends_at = ?,
+            active = 1,
+            reward_claimed = 0
+
+        WHERE id = 1
+    """, (
+        boss_name,
+        int(max_hp),
+        int(max_hp),
+        now.isoformat(),
+        datetime.fromtimestamp(ends).isoformat()
+    ))
+
+    conn.execute("""
+        DELETE FROM boss_participants
+    """)
+
+    conn.commit()
+    conn.close()
+
+
+def get_boss_event():
+
+    conn = get_connection()
+
+    row = conn.execute("""
+        SELECT *
+        FROM boss_event
+        WHERE id = 1
+    """).fetchone()
+
+    conn.close()
+
+    return dict(row) if row else None
+
+
+def damage_boss(
+    user_id,
+    amount
+):
+
+    amount = max(
+        0,
+        int(amount)
+    )
+
+    if amount <= 0:
+
+        return 0
+
+    conn = get_connection()
+
+    boss = conn.execute("""
+        SELECT current_hp,
+               active
+        FROM boss_event
+        WHERE id = 1
+    """).fetchone()
+
+    if not boss or int(boss["active"]) != 1:
+
+        conn.close()
+
+        raise ValueError(
+            "Босс сейчас не активен"
+        )
+
+    current_hp = int(
+        boss["current_hp"]
+    )
+
+    actual_damage = min(
+        amount,
+        current_hp
+    )
+
+    new_hp = (
+        current_hp
+        - actual_damage
+    )
+
+    conn.execute("""
+        UPDATE boss_event
+        SET current_hp = ?
+        WHERE id = 1
+    """, (
+        new_hp,
+    ))
+
+    conn.execute("""
+        INSERT OR IGNORE INTO boss_participants (
+            user_id,
+            damage,
+            reward_claimed
+        )
+        VALUES (?, 0, 0)
+    """, (
+        int(user_id),
+    ))
+
+    conn.execute("""
+        UPDATE boss_participants
+
+        SET damage = damage + ?
+
+        WHERE user_id = ?
+    """, (
+        actual_damage,
+        int(user_id)
+    ))
+
+    conn.execute("""
+        UPDATE players
+        SET boss_damage = boss_damage + ?
+        WHERE user_id = ?
+    """, (
+        actual_damage,
+        int(user_id)
+    ))
+
+    if new_hp <= 0:
+
+        conn.execute("""
+            UPDATE boss_event
+            SET active = 0
+            WHERE id = 1
+        """)
+
+    conn.commit()
+    conn.close()
+
+    return actual_damage
+
+
+def get_boss_participants():
+
+    conn = get_connection()
+
+    rows = conn.execute("""
+        SELECT *
+        FROM boss_participants
+
+        ORDER BY damage DESC
+    """).fetchall()
+
+    conn.close()
+
+    return [
+        dict(row)
+        for row in rows
+    ]
+
+
+def get_boss_damage(user_id):
+
+    conn = get_connection()
+
+    row = conn.execute("""
+        SELECT boss_damage
+        FROM players
+        WHERE user_id = ?
+    """, (
+        int(user_id),
+    )).fetchone()
+
+    conn.close()
+
+    return int(
+        row["boss_damage"]
+        if row
+        else 0
+    )
+
+
+def add_boss_damage(
+    user_id,
+    amount
+):
+
+    conn = get_connection()
+
+    conn.execute("""
+        UPDATE players
+        SET boss_damage = boss_damage + ?
+        WHERE user_id = ?
+    """, (
+        int(amount),
+        int(user_id)
+    ))
+
+    conn.commit()
+    conn.close()
+
+
+def claim_boss_reward(user_id):
+
+    conn = get_connection()
+
+    row = conn.execute("""
+        SELECT damage,
+               reward_claimed
+
+        FROM boss_participants
+
+        WHERE user_id = ?
+    """, (
+        int(user_id),
+    )).fetchone()
+
+    if not row:
+
+        conn.close()
+
+        raise ValueError(
+            "Ты не участвовал в событии"
+        )
+
+    if int(row["reward_claimed"]) == 1:
+
+        conn.close()
+
+        raise ValueError(
+            "Награда уже получена"
+        )
+
+    boss = conn.execute("""
+        SELECT current_hp,
+               active
+        FROM boss_event
+        WHERE id = 1
+    """).fetchone()
+
+    if boss and int(boss["active"]) == 1:
+
+        conn.close()
+
+        raise ValueError(
+            "Босс ещё не побеждён"
+        )
+
+    conn.execute("""
+        UPDATE boss_participants
+        SET reward_claimed = 1
+        WHERE user_id = ?
+    """, (
+        int(user_id),
+    ))
+
+    conn.commit()
+    conn.close()
+
+    return int(row["damage"])
+
+
+# =========================================================
+# EGG PASS
+# =========================================================
+
+def ensure_egg_pass(user_id):
+
+    conn = get_connection()
+
+    conn.execute("""
+        INSERT OR IGNORE INTO egg_pass (
+            user_id,
+            xp,
+            level,
+            premium
+        )
+        VALUES (?, 0, 1, 0)
+    """, (
+        int(user_id),
+    ))
+
+    conn.commit()
+    conn.close()
+
+
+def get_egg_pass(user_id):
+
+    ensure_egg_pass(user_id)
+
+    conn = get_connection()
+
+    row = conn.execute("""
+        SELECT *
+        FROM egg_pass
+        WHERE user_id = ?
+    """, (
+        int(user_id),
+    )).fetchone()
+
+    conn.close()
+
+    return dict(row) if row else None
+
+
+def add_egg_pass_xp(
+    user_id,
+    amount
+):
+
+    amount = max(
+        0,
+        int(amount)
+    )
+
+    ensure_egg_pass(user_id)
+
+    conn = get_connection()
+
+    row = conn.execute("""
+        SELECT xp,
+               level
+        FROM egg_pass
+        WHERE user_id = ?
+    """, (
+        int(user_id),
+    )).fetchone()
+
+    old_level = int(
+        row["level"]
+    )
+
+    new_xp = int(
+        row["xp"]
+    ) + amount
+
+    # 100 XP = 1 уровень Egg Pass
+    new_level = min(
+        30,
+        (new_xp // 100) + 1
+    )
+
+    conn.execute("""
+        UPDATE egg_pass
+
+        SET xp = ?,
+            level = ?
+
+        WHERE user_id = ?
+    """, (
+        new_xp,
+        new_level,
+        int(user_id)
+    ))
+
+    conn.commit()
+    conn.close()
+
+    return {
+        "xp": new_xp,
+        "level": new_level,
+        "level_up": new_level > old_level
+    }
+
+
+def set_egg_pass_premium(
+    user_id,
+    premium=True
+):
+
+    ensure_egg_pass(user_id)
+
+    conn = get_connection()
+
+    conn.execute("""
+        UPDATE egg_pass
+        SET premium = ?
+        WHERE user_id = ?
+    """, (
+        1 if premium else 0,
+        int(user_id)
+    ))
+
+    conn.commit()
+    conn.close()
+
+
+def has_egg_pass_reward(
+    user_id,
+    level,
+    track
+):
+
+    conn = get_connection()
+
+    row = conn.execute("""
+        SELECT 1
+
+        FROM egg_pass_claims
+
+        WHERE user_id = ?
+          AND level = ?
+          AND track = ?
+
+        LIMIT 1
+    """, (
+        int(user_id),
+        int(level),
+        track
+    )).fetchone()
+
+    conn.close()
+
+    return row is not None
+
+
+def claim_egg_pass_reward(
+    user_id,
+    level,
+    track
+):
+
+    ensure_egg_pass(user_id)
+
+    conn = get_connection()
+
+    pass_row = conn.execute("""
+        SELECT level,
+               premium
+        FROM egg_pass
+        WHERE user_id = ?
+    """, (
+        int(user_id),
+    )).fetchone()
+
+    if not pass_row:
+
+        conn.close()
+
+        raise ValueError(
+            "Egg Pass не найден"
+        )
+
+    if int(pass_row["level"]) < int(level):
+
+        conn.close()
+
+        raise ValueError(
+            "Этот уровень Egg Pass ещё не открыт"
+        )
+
+    if track == "premium" and int(
+        pass_row["premium"]
+    ) != 1:
+
+        conn.close()
+
+        raise ValueError(
+            "Нужен Premium Egg Pass"
+        )
+
+    if has_egg_pass_reward(
+        user_id,
+        level,
+        track
+    ):
+
+        conn.close()
+
+        raise ValueError(
+            "Награда уже получена"
+        )
+
+    conn.execute("""
+        INSERT INTO egg_pass_claims (
+            user_id,
+            level,
+            track
+        )
+        VALUES (?, ?, ?)
+    """, (
+        int(user_id),
+        int(level),
+        track
+    ))
+
+    conn.commit()
+    conn.close()
+
+
+# =========================================================
 # AVATAR
 # =========================================================
 
@@ -1457,51 +3370,6 @@ def set_avatar(
         WHERE user_id = ?
     """, (
         avatar,
-        int(user_id)
-    ))
-
-    conn.commit()
-    conn.close()
-
-
-# =========================================================
-# BOSS
-# =========================================================
-
-def get_boss_damage(user_id):
-
-    conn = get_connection()
-
-    row = conn.execute("""
-        SELECT boss_damage
-        FROM players
-        WHERE user_id = ?
-    """, (
-        int(user_id),
-    )).fetchone()
-
-    conn.close()
-
-    return int(
-        row["boss_damage"]
-        if row
-        else 0
-    )
-
-
-def add_boss_damage(
-    user_id,
-    amount
-):
-
-    conn = get_connection()
-
-    conn.execute("""
-        UPDATE players
-        SET boss_damage = boss_damage + ?
-        WHERE user_id = ?
-    """, (
-        int(amount),
         int(user_id)
     ))
 
