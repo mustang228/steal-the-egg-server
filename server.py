@@ -23,6 +23,8 @@ CORS(app)
 # =========================================================
 
 BOT_TOKEN = os.getenv("BOT_TOKEN", "")
+print("BOT_TOKEN найден:", bool(BOT_TOKEN))
+print("BOT_TOKEN длина:", len(BOT_TOKEN))
 PORT = int(os.getenv("PORT", "10000"))
 
 # Проверяем переменную при запуске.
