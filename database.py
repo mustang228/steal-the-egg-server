@@ -1,5 +1,6 @@
 import os
 import sqlite3
+import time
 from pathlib import Path
 from datetime import date, datetime, timedelta
 # =========================================================
@@ -21,12 +22,40 @@ DB_PATH.parent.mkdir(
 # =========================================================
 # CONNECTION
 # =========================================================
+def _enable_wal():
+    """
+    Режим WAL: читатели больше не блокируются писателями, а
+    писатели ждут друг друга в очереди. Это лечит ошибку
+    "database is locked" при нескольких одновременных запросах.
+    Настройка сохраняется в самом файле базы.
+    """
+    for _ in range(10):
+        try:
+            conn = sqlite3.connect(
+                DB_PATH,
+                timeout=30
+            )
+            try:
+                conn.execute(
+                    "PRAGMA journal_mode = WAL"
+                )
+            finally:
+                conn.close()
+            return
+        except sqlite3.OperationalError:
+            time.sleep(0.5)
 def get_connection():
     conn = sqlite3.connect(
         DB_PATH,
         timeout=30
     )
     conn.row_factory = sqlite3.Row
+    conn.execute(
+        "PRAGMA busy_timeout = 30000"
+    )
+    conn.execute(
+        "PRAGMA synchronous = NORMAL"
+    )
     conn.execute(
         "PRAGMA foreign_keys = ON"
     )
@@ -86,6 +115,7 @@ def _add_column(
 # DATABASE INITIALIZATION
 # =========================================================
 def init_database():
+    _enable_wal()
     conn = get_connection()
     try:
         # =================================================
@@ -822,25 +852,27 @@ def ensure_player(
     user_id = int(
         user_id
     )
+    display_name = (
+        username
+        or first_name
+        or ''
+    )
     conn = get_connection()
     try:
         player = conn.execute(
             """
-            SELECT *
+            SELECT user_id, username
             FROM players
             WHERE user_id = ?
             """,
             (user_id,)
         ).fetchone()
-        display_name = (
-            username
-            or first_name
-            or ''
-        )
+        # Пишем в базу только если реально что-то изменилось:
+        # раньше здесь была запись на КАЖДЫЙ запрос игры.
         if not player:
             conn.execute(
                 """
-                INSERT INTO players (
+                INSERT OR IGNORE INTO players (
                     user_id,
                     username,
                     avatar
@@ -853,7 +885,11 @@ def ensure_player(
                     '🥚'
                 )
             )
-        elif display_name:
+            conn.commit()
+        elif (
+            display_name
+            and player['username'] != display_name
+        ):
             conn.execute(
                 """
                 UPDATE players
@@ -865,7 +901,7 @@ def ensure_player(
                     user_id
                 )
             )
-        conn.commit()
+            conn.commit()
     finally:
         conn.close()
     return get_player(
@@ -1694,6 +1730,21 @@ def clear_old_daily_quests(
     today = date.today().isoformat()
     conn = get_connection()
     try:
+        old = conn.execute(
+            """
+            SELECT 1
+            FROM daily_quests
+            WHERE user_id = ?
+              AND task_date != ?
+            LIMIT 1
+            """,
+            (
+                int(user_id),
+                today
+            )
+        ).fetchone()
+        if not old:
+            return
         conn.execute(
             """
             DELETE FROM daily_quests
@@ -3286,6 +3337,16 @@ def ensure_egg_pass(
 ):
     conn = get_connection()
     try:
+        exists = conn.execute(
+            """
+            SELECT 1
+            FROM egg_pass
+            WHERE user_id = ?
+            """,
+            (int(user_id),)
+        ).fetchone()
+        if exists:
+            return
         conn.execute(
             """
             INSERT OR IGNORE INTO egg_pass (
