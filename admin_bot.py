@@ -977,6 +977,35 @@ def handle_update(update):
 # =========================================================
 _started = False
 _stop = threading.Event()
+_lock_file = None
+
+
+def _acquire_single_instance():
+    """
+    Только один процесс на машине может опрашивать Telegram
+    (иначе будет ошибка 409 и двойные ответы, например при
+    нескольких воркерах gunicorn). Замок снимается сам при
+    завершении процесса.
+    """
+    global _lock_file
+    try:
+        import fcntl
+    except ImportError:
+        return True  # Windows: замок не нужен для локальных тестов
+    import tempfile
+    path = os.path.join(
+        tempfile.gettempdir(),
+        'steal_the_egg_admin_bot.lock'
+    )
+    try:
+        _lock_file = open(path, 'w')
+        fcntl.flock(
+            _lock_file,
+            fcntl.LOCK_EX | fcntl.LOCK_NB
+        )
+        return True
+    except OSError:
+        return False
 
 
 def run():
@@ -1024,6 +1053,9 @@ def start_in_thread():
         return False
     if not admin_ids():
         print('[admin_bot] ADMIN_IDS не задан - админ-бот выключен.')
+        return False
+    if not _acquire_single_instance():
+        print('[admin_bot] уже запущен в другом процессе - пропускаю.')
         return False
     thread = threading.Thread(
         target=run,
