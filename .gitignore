@@ -74,3 +74,8 @@ dist/
 *.tmp
 *.temp
 *.bak
+players.db
+*.db
+__pycache__/
+.env
+back_up_folder/
