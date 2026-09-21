@@ -409,7 +409,9 @@ database.init_database()
 # PET BONUS
 # =========================================================
 def pet_bonus(uid):
-    pet = database.get_active_pet(uid)
+    pet = database.get_active_pet(
+        uid
+    )
     if not pet:
         return 0
     try:
@@ -429,6 +431,22 @@ def pet_bonus(uid):
         rarity,
         0
     )
+def apply_pet_bonus(uid, amount):
+    """
+    Прибавляет бонус активного питомца к сумме Egg Coins.
+    Дробная часть округляется случайно (5% от 4 монет = 4.2 ->
+    4 монеты, а с шансом 20% - 5), поэтому даже на маленьких
+    наградах бонус реально работает.
+    """
+    amount = int(amount)
+    bonus = pet_bonus(uid)
+    if bonus <= 0 or amount <= 0:
+        return amount
+    exact = amount * (1 + bonus)
+    whole = int(exact)
+    if random.random() < exact - whole:
+        whole += 1
+    return whole
 # =========================================================
 # EGG PASS
 # =========================================================
@@ -643,13 +661,10 @@ def add_game_coins(
     amount = int(amount)
     if has(uid, 2):
         amount += 1
-    bonus = pet_bonus(uid)
-    if bonus > 0:
-        amount = int(
-            amount * (
-                1 + bonus
-            )
-        )
+    amount = apply_pet_bonus(
+        uid,
+        amount
+    )
     database.add_egg_coins(
         uid,
         amount
@@ -669,11 +684,10 @@ def minigame_reward(
     amount = int(amount)
     if has(uid, 2):
         amount += 1
-    bonus = pet_bonus(uid)
-    if bonus > 0:
-        amount = int(
-            amount * (1 + bonus)
-        )
+    amount = apply_pet_bonus(
+        uid,
+        amount
+    )
     capped = False
     if GAME_DAILY_CAP:
         left = max(
@@ -1113,7 +1127,10 @@ def exchange():
             'Нужно минимум 30 Tap Coins.'
         )
     spent = count * 30
-    received = count * 10
+    received = apply_pet_bonus(
+        uid,
+        count * 10
+    )
     if not database.remove_tap_coins(
         uid,
         spent
@@ -2524,24 +2541,38 @@ def api_chest_open():
                 0.5
             ]
         )[0]
-        database.add_pet(
+        added, auto_active = database.grant_pet(
             uid,
             pet_id
         )
-        result = {
-            'type':
-                'pet',
-            'pet': {
-                'id':
-                    pet_id,
-                'name':
-                    PETS[pet_id][0],
-                'rarity':
-                    PETS[pet_id][1],
-                'bonus':
-                    PETS[pet_id][2]
+        if added:
+            result = {
+                'type': 'pet',
+                'auto_activated': auto_active,
+                'pet': {
+                    'id': pet_id,
+                    'name': PETS[pet_id][0],
+                    'rarity': PETS[pet_id][1],
+                    'bonus': PETS[pet_id][2]
+                }
             }
-        }
+        else:
+            # Такой питомец уже есть - не даём награде пропасть.
+            amount = 300 * pet_id
+            database.add_egg_coins(
+                uid,
+                amount
+            )
+            result = {
+                'type': 'pet_duplicate',
+                'amount': amount,
+                'pet': {
+                    'id': pet_id,
+                    'name': PETS[pet_id][0],
+                    'rarity': PETS[pet_id][1],
+                    'bonus': PETS[pet_id][2]
+                }
+            }
     # =====================================================
     # EGG
     # =====================================================
@@ -2653,51 +2684,33 @@ def api_pets():
     uid = int(
         u['id']
     )
-    rows = database.get_player_pets(
-        uid
-    )
     owned = {}
-    for row in rows:
-        row = dict(
-            row
+    for row in database.get_player_pets(uid):
+        owned[int(row['pet_id'])] = bool(
+            row['active']
         )
-        pet_id = int(
-            row.get(
-                'pet_id',
-                0
-            )
-        )
-        owned[pet_id] = int(
-            row.get(
-                'active',
-                0
-            )
-        )
+    pets = {}
+    active_pet = None
+    for i, pet in PETS.items():
+        info = {
+            'id': i,
+            'name': pet[0],
+            'rarity': pet[1],
+            'bonus': pet[2],
+            'bonus_percent': int(
+                round(PET_BONUS.get(pet[1], 0) * 100)
+            ),
+            'owned': i in owned,
+            'active': owned.get(i, False)
+        }
+        pets[str(i)] = info
+        if info['active']:
+            active_pet = info
     return jsonify(
         ok=True,
-        pets={
-            str(i): {
-                'id':
-                    i,
-                'name':
-                    pet[0],
-                'rarity':
-                    pet[1],
-                'bonus':
-                    pet[2],
-                'owned':
-                    i in owned,
-                'active':
-                    bool(
-                        owned.get(
-                            i,
-                            0
-                        )
-                    )
-            }
-            for i, pet
-            in PETS.items()
-        }
+        pets=pets,
+        active_pet=active_pet,
+        how_to_get='Питомцев можно получить из 🌌 Божественного сундука.'
     )
 # =========================================================
 # ACTIVATE PET
