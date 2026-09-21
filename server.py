@@ -4,6 +4,7 @@ import hmac
 import hashlib
 import json
 import random
+import sqlite3
 import threading
 from datetime import date
 from urllib.parse import parse_qsl
@@ -903,6 +904,35 @@ def json_error(
             error=message
         ),
         status
+    )
+# =========================================================
+# ERROR HANDLERS
+# =========================================================
+#
+# Любая ошибка возвращается как JSON (а не HTML-страница), поэтому
+# клиент показывает понятное сообщение и может повторить запрос.
+#
+@app.errorhandler(sqlite3.OperationalError)
+def handle_db_busy(error):
+    app.logger.error(
+        'SQLite: %s',
+        error
+    )
+    return json_error(
+        'Сервер занят, попробуй ещё раз через секунду.',
+        503
+    )
+@app.errorhandler(Exception)
+def handle_unexpected(error):
+    from werkzeug.exceptions import HTTPException
+    if isinstance(error, HTTPException):
+        return error
+    app.logger.exception(
+        'Необработанная ошибка'
+    )
+    return json_error(
+        'Внутренняя ошибка сервера.',
+        500
     )
 # =========================================================
 # INDEX / STATIC / HEALTH
