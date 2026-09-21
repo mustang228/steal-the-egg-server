@@ -3721,6 +3721,19 @@ def api_steal():
 # =========================================================
 if __name__ == '__main__':
     database.init_database()
+    # Админ-бот (панель управления) стартует в фоне, если заданы
+    # ADMIN_BOT_TOKEN и ADMIN_IDS. Иначе игра работает как обычно.
+    try:
+        import admin_bot
+        admin_bot.configure(
+            EGGS,
+            CHESTS,
+            ITEMS,
+            PETS
+        )
+        admin_bot.start_in_thread()
+    except Exception as error:
+        print(f'[admin_bot] не запущен: {error}')
     app.run(
         host='0.0.0.0',
         port=PORT,
