@@ -1,43 +1,40 @@
+import os
 import sqlite3
 from pathlib import Path
 from datetime import date, datetime, timedelta
-
-
 # =========================================================
 # DATABASE PATH
 # =========================================================
-
 BASE_DIR = Path(__file__).resolve().parent
-
-DB_PATH = BASE_DIR / "players.db"
-
-
+# Путь к базе можно задать переменной окружения DB_PATH
+# (например /data/players.db на постоянном диске Render).
+DB_PATH = Path(
+    os.getenv(
+        "DB_PATH",
+        str(BASE_DIR / "players.db")
+    )
+)
+DB_PATH.parent.mkdir(
+    parents=True,
+    exist_ok=True
+)
 # =========================================================
 # CONNECTION
 # =========================================================
-
 def get_connection():
-
     conn = sqlite3.connect(
         DB_PATH,
         timeout=30
     )
-
     conn.row_factory = sqlite3.Row
-
     conn.execute(
         "PRAGMA foreign_keys = ON"
     )
-
     return conn
-
-
 # =========================================================
 # HELPERS
 # =========================================================
-
 def _table_exists(conn, table_name):
-
     row = conn.execute(
         """
         SELECT name
@@ -47,269 +44,198 @@ def _table_exists(conn, table_name):
         """,
         (table_name,)
     ).fetchone()
-
     return row is not None
-
-
 def _column_exists(
     conn,
     table_name,
     column_name
 ):
-
     if not _table_exists(
         conn,
         table_name
     ):
         return False
-
     columns = conn.execute(
         f"PRAGMA table_info({table_name})"
     ).fetchall()
-
     return any(
         column["name"] == column_name
         for column in columns
     )
-
-
 def _add_column(
     conn,
     table_name,
     column_definition
 ):
-
     column_name = (
         column_definition
         .split()[0]
     )
-
     if not _column_exists(
         conn,
         table_name,
         column_name
     ):
-
         conn.execute(
             f"""
             ALTER TABLE {table_name}
             ADD COLUMN {column_definition}
             """
         )
-
-
 # =========================================================
 # DATABASE INITIALIZATION
 # =========================================================
-
 def init_database():
-
     conn = get_connection()
-
     try:
-
         # =================================================
         # PLAYERS
         # =================================================
-
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS players (
-
                 user_id INTEGER PRIMARY KEY,
-
                 tap_coins INTEGER NOT NULL DEFAULT 0,
-
                 egg_coins INTEGER NOT NULL DEFAULT 0,
-
                 username TEXT DEFAULT '',
-
                 blocked INTEGER NOT NULL DEFAULT 0,
-
                 xp INTEGER NOT NULL DEFAULT 0,
-
                 level INTEGER NOT NULL DEFAULT 1,
-
                 login_streak INTEGER NOT NULL DEFAULT 0,
-
                 last_login TEXT,
-
                 daily_bonus_date TEXT,
-
                 task_date TEXT,
-
                 task_taps INTEGER NOT NULL DEFAULT 0,
-
                 task_games INTEGER NOT NULL DEFAULT 0,
-
                 task_eggs INTEGER NOT NULL DEFAULT 0,
-
                 boss_damage INTEGER NOT NULL DEFAULT 0,
-
                 avatar TEXT DEFAULT '🥚'
             )
             """
         )
-
         # =================================================
         # PLAYERS MIGRATIONS
         # =================================================
-
         _add_column(
             conn,
             "players",
             "tap_coins INTEGER NOT NULL DEFAULT 0"
         )
-
         _add_column(
             conn,
             "players",
             "egg_coins INTEGER NOT NULL DEFAULT 0"
         )
-
         _add_column(
             conn,
             "players",
             "username TEXT DEFAULT ''"
         )
-
         _add_column(
             conn,
             "players",
             "blocked INTEGER NOT NULL DEFAULT 0"
         )
-
         _add_column(
             conn,
             "players",
             "xp INTEGER NOT NULL DEFAULT 0"
         )
-
         _add_column(
             conn,
             "players",
             "level INTEGER NOT NULL DEFAULT 1"
         )
-
         _add_column(
             conn,
             "players",
             "login_streak INTEGER NOT NULL DEFAULT 0"
         )
-
         _add_column(
             conn,
             "players",
             "last_login TEXT"
         )
-
         _add_column(
             conn,
             "players",
             "daily_bonus_date TEXT"
         )
-
         _add_column(
             conn,
             "players",
             "task_date TEXT"
         )
-
         _add_column(
             conn,
             "players",
             "task_taps INTEGER NOT NULL DEFAULT 0"
         )
-
         _add_column(
             conn,
             "players",
             "task_games INTEGER NOT NULL DEFAULT 0"
         )
-
         _add_column(
             conn,
             "players",
             "task_eggs INTEGER NOT NULL DEFAULT 0"
         )
-
         _add_column(
             conn,
             "players",
             "boss_damage INTEGER NOT NULL DEFAULT 0"
         )
-
         _add_column(
             conn,
             "players",
             "avatar TEXT DEFAULT '🥚'"
         )
-
         # =================================================
         # PLAYER EGGS
         # =================================================
-
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS player_eggs (
-
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-
                 user_id INTEGER NOT NULL,
-
                 egg_id INTEGER NOT NULL
             )
             """
         )
-
         # =================================================
         # PLAYER ITEMS
         # =================================================
-
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS player_items (
-
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-
                 user_id INTEGER NOT NULL,
-
                 item_id INTEGER NOT NULL
             )
             """
         )
-
         # =================================================
         # ACHIEVEMENTS
         # =================================================
-
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS achievements (
-
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-
                 user_id INTEGER NOT NULL,
-
                 achievement_id INTEGER NOT NULL
             )
             """
         )
-
         # =================================================
         # DAILY TASK CLAIMS
         # =================================================
-
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS daily_task_claims (
-
                 user_id INTEGER NOT NULL,
-
                 task_date TEXT NOT NULL,
-
                 task_id TEXT NOT NULL,
-
                 PRIMARY KEY (
                     user_id,
                     task_date,
@@ -318,234 +244,158 @@ def init_database():
             )
             """
         )
-
         # =================================================
         # EGG TYPES
         # =================================================
-
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS egg_types (
-
                 egg_id INTEGER PRIMARY KEY,
-
                 name TEXT NOT NULL,
-
                 rarity TEXT NOT NULL,
-
                 rarity_order INTEGER NOT NULL DEFAULT 0,
-
                 marketable INTEGER NOT NULL DEFAULT 1
             )
             """
         )
-
         # =================================================
         # PLAYER CHESTS
         # =================================================
-
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS player_chests (
-
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-
                 user_id INTEGER NOT NULL,
-
                 chest_id INTEGER NOT NULL,
-
                 created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
             )
             """
         )
-
         # =================================================
         # PET TYPES
         # =================================================
-
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS pets (
-
                 pet_id INTEGER PRIMARY KEY,
-
                 name TEXT NOT NULL,
-
                 rarity TEXT NOT NULL,
-
                 bonus_type TEXT NOT NULL,
-
                 bonus_value REAL NOT NULL DEFAULT 0
             )
             """
         )
-
         # =================================================
         # PLAYER PETS
         # =================================================
-
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS player_pets (
-
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-
                 user_id INTEGER NOT NULL,
-
                 pet_id INTEGER NOT NULL,
-
                 active INTEGER NOT NULL DEFAULT 0,
-
                 created_at TEXT NOT NULL
                     DEFAULT CURRENT_TIMESTAMP
             )
             """
         )
-
         # =================================================
         # MARKET
         # =================================================
-
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS market_listings (
-
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-
                 seller_id INTEGER NOT NULL,
-
                 egg_id INTEGER NOT NULL,
-
                 price INTEGER NOT NULL,
-
                 status TEXT NOT NULL DEFAULT 'active',
-
                 buyer_id INTEGER,
-
                 created_at TEXT NOT NULL
                     DEFAULT CURRENT_TIMESTAMP,
-
                 sold_at TEXT
             )
             """
         )
-
         # =================================================
         # STEAL ATTEMPTS
         # =================================================
-
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS steal_attempts (
-
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-
                 thief_id INTEGER NOT NULL,
-
                 victim_id INTEGER NOT NULL,
-
                 egg_id INTEGER NOT NULL,
-
                 success INTEGER NOT NULL DEFAULT 0,
-
                 created_at TEXT NOT NULL
                     DEFAULT CURRENT_TIMESTAMP
             )
             """
         )
-
         # =================================================
         # EGG PROTECTION
         # =================================================
-
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS egg_protection (
-
                 user_id INTEGER PRIMARY KEY,
-
                 protection_until INTEGER NOT NULL
             )
             """
         )
-
         # =================================================
         # BOSS EVENT
         # =================================================
-
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS boss_event (
-
                 id INTEGER PRIMARY KEY,
-
                 boss_name TEXT NOT NULL,
-
                 max_hp INTEGER NOT NULL,
-
                 current_hp INTEGER NOT NULL,
-
                 started_at INTEGER NOT NULL,
-
                 ends_at INTEGER NOT NULL,
-
                 active INTEGER NOT NULL DEFAULT 1,
-
                 reward_claimed INTEGER NOT NULL DEFAULT 0
             )
             """
         )
-
         # =================================================
         # BOSS PARTICIPANTS
         # =================================================
-
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS boss_participants (
-
                 user_id INTEGER PRIMARY KEY,
-
                 damage INTEGER NOT NULL DEFAULT 0,
-
                 reward_claimed INTEGER NOT NULL DEFAULT 0
             )
             """
         )
-
         # =================================================
         # EGG PASS
         # =================================================
-
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS egg_pass (
-
                 user_id INTEGER PRIMARY KEY,
-
                 xp INTEGER NOT NULL DEFAULT 0,
-
                 level INTEGER NOT NULL DEFAULT 0,
-
                 premium INTEGER NOT NULL DEFAULT 0
             )
             """
         )
-
         # =================================================
         # EGG PASS CLAIMS
         # =================================================
-
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS egg_pass_claims (
-
                 user_id INTEGER NOT NULL,
-
                 level INTEGER NOT NULL,
-
                 track TEXT NOT NULL,
-
                 PRIMARY KEY (
                     user_id,
                     level,
@@ -554,40 +404,71 @@ def init_database():
             )
             """
         )
-
         # =================================================
         # DAILY QUESTS
         # =================================================
-
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS daily_quests (
-
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-
                 user_id INTEGER NOT NULL,
-
                 task_date TEXT NOT NULL,
-
                 quest_id TEXT NOT NULL,
-
                 progress INTEGER NOT NULL DEFAULT 0,
-
                 target INTEGER NOT NULL,
-
                 reward_type TEXT NOT NULL,
-
                 reward_amount INTEGER NOT NULL,
-
                 claimed INTEGER NOT NULL DEFAULT 0
             )
             """
         )
-
+        # =================================================
+        # PLAYER BOOSTERS (переживают перезапуск сервера)
+        # =================================================
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS player_boosters (
+                user_id INTEGER NOT NULL,
+                item_id INTEGER NOT NULL,
+                until INTEGER NOT NULL,
+                PRIMARY KEY (
+                    user_id,
+                    item_id
+                )
+            )
+            """
+        )
+        # =================================================
+        # DAILY GAME REWARDS (дневной лимит наград за игры)
+        # =================================================
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS daily_game_rewards (
+                user_id INTEGER NOT NULL,
+                reward_date TEXT NOT NULL,
+                amount INTEGER NOT NULL DEFAULT 0,
+                PRIMARY KEY (
+                    user_id,
+                    reward_date
+                )
+            )
+            """
+        )
+        conn.execute(
+            """
+            DELETE FROM daily_game_rewards
+            WHERE reward_date < ?
+            """,
+            (
+                (
+                    date.today()
+                    - timedelta(days=7)
+                ).isoformat(),
+            )
+        )
         # =================================================
         # INDEXES
         # =================================================
-
         conn.execute(
             """
             CREATE INDEX IF NOT EXISTS
@@ -595,7 +476,6 @@ def init_database():
             ON player_eggs(user_id)
             """
         )
-
         conn.execute(
             """
             CREATE INDEX IF NOT EXISTS
@@ -603,7 +483,6 @@ def init_database():
             ON player_items(user_id)
             """
         )
-
         conn.execute(
             """
             CREATE INDEX IF NOT EXISTS
@@ -611,7 +490,6 @@ def init_database():
             ON player_pets(user_id)
             """
         )
-
         conn.execute(
             """
             CREATE INDEX IF NOT EXISTS
@@ -619,7 +497,6 @@ def init_database():
             ON market_listings(status)
             """
         )
-
         conn.execute(
             """
             CREATE INDEX IF NOT EXISTS
@@ -627,7 +504,6 @@ def init_database():
             ON steal_attempts(thief_id)
             """
         )
-
         conn.execute(
             """
             CREATE INDEX IF NOT EXISTS
@@ -635,13 +511,10 @@ def init_database():
             ON steal_attempts(victim_id)
             """
         )
-
         # =================================================
         # DEFAULT EGG TYPES
         # =================================================
-
         egg_types = [
-
             (
                 1,
                 '🥚 Обычное яйцо',
@@ -649,7 +522,6 @@ def init_database():
                 1,
                 1
             ),
-
             (
                 2,
                 '🥈 Серебряное яйцо',
@@ -657,7 +529,6 @@ def init_database():
                 2,
                 1
             ),
-
             (
                 3,
                 '🥇 Золотое яйцо',
@@ -665,7 +536,6 @@ def init_database():
                 3,
                 1
             ),
-
             (
                 4,
                 '💎 Алмазное яйцо',
@@ -673,7 +543,6 @@ def init_database():
                 4,
                 1
             ),
-
             (
                 5,
                 '🔥 Огненное яйцо',
@@ -681,7 +550,6 @@ def init_database():
                 4,
                 1
             ),
-
             (
                 6,
                 '❄️ Ледяное яйцо',
@@ -689,7 +557,6 @@ def init_database():
                 5,
                 1
             ),
-
             (
                 7,
                 '🌌 Космическое яйцо',
@@ -697,7 +564,6 @@ def init_database():
                 5,
                 1
             ),
-
             (
                 8,
                 '👑 Королевское яйцо',
@@ -705,7 +571,6 @@ def init_database():
                 6,
                 1
             ),
-
             (
                 9,
                 '⚡ Молниевое яйцо',
@@ -713,7 +578,6 @@ def init_database():
                 6,
                 1
             ),
-
             (
                 10,
                 '🌑 Тёмное яйцо',
@@ -721,7 +585,6 @@ def init_database():
                 6,
                 1
             ),
-
             (
                 11,
                 '☀️ Солнечное яйцо',
@@ -729,7 +592,6 @@ def init_database():
                 7,
                 1
             ),
-
             (
                 12,
                 '🪐 Галактическое яйцо',
@@ -737,7 +599,6 @@ def init_database():
                 7,
                 1
             ),
-
             (
                 13,
                 '🧿 Проклятое яйцо',
@@ -745,7 +606,6 @@ def init_database():
                 8,
                 1
             ),
-
             (
                 14,
                 '🪽 Небесное яйцо',
@@ -753,7 +613,6 @@ def init_database():
                 8,
                 1
             ),
-
             (
                 15,
                 '👾 Глитч-яйцо',
@@ -761,7 +620,6 @@ def init_database():
                 8,
                 1
             ),
-
             (
                 16,
                 '🌋 Магмовое яйцо',
@@ -769,7 +627,6 @@ def init_database():
                 5,
                 1
             ),
-
             (
                 17,
                 '🌊 Океанское яйцо',
@@ -777,7 +634,6 @@ def init_database():
                 6,
                 1
             ),
-
             (
                 18,
                 '🌳 Древнее яйцо',
@@ -785,7 +641,6 @@ def init_database():
                 7,
                 1
             ),
-
             (
                 19,
                 '👻 Призрачное яйцо',
@@ -793,7 +648,6 @@ def init_database():
                 6,
                 1
             ),
-
             (
                 20,
                 '🩸 Тёмно-красное яйцо',
@@ -802,9 +656,7 @@ def init_database():
                 1
             )
         ]
-
         for egg in egg_types:
-
             conn.execute(
                 """
                 INSERT OR IGNORE INTO egg_types (
@@ -818,13 +670,10 @@ def init_database():
                 """,
                 egg
             )
-
         # =================================================
         # DEFAULT PETS
         # =================================================
-
         pets = [
-
             (
                 1,
                 '🐹 Яичный хомяк',
@@ -832,7 +681,6 @@ def init_database():
                 'egg_coins',
                 0.05
             ),
-
             (
                 2,
                 '🐱 Космо-кот',
@@ -840,7 +688,6 @@ def init_database():
                 'egg_coins',
                 0.08
             ),
-
             (
                 3,
                 '🦊 Огненный лис',
@@ -848,7 +695,6 @@ def init_database():
                 'egg_coins',
                 0.10
             ),
-
             (
                 4,
                 '🐉 Маленький дракон',
@@ -856,7 +702,6 @@ def init_database():
                 'egg_coins',
                 0.15
             ),
-
             (
                 5,
                 '🦄 Неоновый единорог',
@@ -864,7 +709,6 @@ def init_database():
                 'egg_coins',
                 0.20
             ),
-
             (
                 6,
                 '👑 Королевский дракон',
@@ -872,7 +716,6 @@ def init_database():
                 'egg_coins',
                 0.30
             ),
-
             (
                 7,
                 '👾 Глитч-питомец',
@@ -881,9 +724,7 @@ def init_database():
                 0.40
             )
         ]
-
         for pet in pets:
-
             conn.execute(
                 """
                 INSERT OR IGNORE INTO pets (
@@ -897,11 +738,9 @@ def init_database():
                 """,
                 pet
             )
-
         # =================================================
         # DEFAULT BOSS
         # =================================================
-
         boss = conn.execute(
             """
             SELECT id
@@ -909,13 +748,10 @@ def init_database():
             WHERE id = 1
             """
         ).fetchone()
-
         if not boss:
-
             now = int(
                 datetime.now().timestamp()
             )
-
             conn.execute(
                 """
                 INSERT INTO boss_event (
@@ -947,28 +783,19 @@ def init_database():
                     now + 86400
                 )
             )
-
         conn.commit()
-
     finally:
-
         conn.close()
-
-
 # =========================================================
 # PLAYER
 # =========================================================
-
 def create_player(
     user_id,
     username=None,
     avatar='🥚'
 ):
-
     conn = get_connection()
-
     try:
-
         conn.execute(
             """
             INSERT OR IGNORE INTO players (
@@ -984,28 +811,19 @@ def create_player(
                 avatar or '🥚'
             )
         )
-
         conn.commit()
-
     finally:
-
         conn.close()
-
-
 def ensure_player(
     user_id,
     username=None,
     first_name=None
 ):
-
     user_id = int(
         user_id
     )
-
     conn = get_connection()
-
     try:
-
         player = conn.execute(
             """
             SELECT *
@@ -1014,15 +832,12 @@ def ensure_player(
             """,
             (user_id,)
         ).fetchone()
-
         display_name = (
             username
             or first_name
             or ''
         )
-
         if not player:
-
             conn.execute(
                 """
                 INSERT INTO players (
@@ -1038,9 +853,7 @@ def ensure_player(
                     '🥚'
                 )
             )
-
         elif display_name:
-
             conn.execute(
                 """
                 UPDATE players
@@ -1052,24 +865,15 @@ def ensure_player(
                     user_id
                 )
             )
-
         conn.commit()
-
     finally:
-
         conn.close()
-
     return get_player(
         user_id
     )
-
-
 def get_player(user_id):
-
     conn = get_connection()
-
     try:
-
         return conn.execute(
             """
             SELECT *
@@ -1078,21 +882,14 @@ def get_player(user_id):
             """,
             (int(user_id),)
         ).fetchone()
-
     finally:
-
         conn.close()
-
-
 def update_username(
     user_id,
     username
 ):
-
     conn = get_connection()
-
     try:
-
         conn.execute(
             """
             UPDATE players
@@ -1104,41 +901,27 @@ def update_username(
                 int(user_id)
             )
         )
-
         conn.commit()
-
     finally:
-
         conn.close()
-
-
 # =========================================================
 # BALANCE
 # =========================================================
-
 def get_tap_coins(user_id):
-
     player = get_player(
         user_id
     )
-
     if not player:
         return 0
-
     return int(
         player['tap_coins']
     )
-
-
 def add_tap_coins(
     user_id,
     amount
 ):
-
     conn = get_connection()
-
     try:
-
         conn.execute(
             """
             UPDATE players
@@ -1154,30 +937,20 @@ def add_tap_coins(
                 int(user_id)
             )
         )
-
         conn.commit()
-
     finally:
-
         conn.close()
-
-
 def remove_tap_coins(
     user_id,
     amount
 ):
-
     amount = int(
         amount
     )
-
     if amount <= 0:
         return False
-
     conn = get_connection()
-
     try:
-
         cursor = conn.execute(
             """
             UPDATE players
@@ -1192,39 +965,25 @@ def remove_tap_coins(
                 amount
             )
         )
-
         conn.commit()
-
         return cursor.rowcount > 0
-
     finally:
-
         conn.close()
-
-
 def get_egg_coins(user_id):
-
     player = get_player(
         user_id
     )
-
     if not player:
         return 0
-
     return int(
         player['egg_coins']
     )
-
-
 def add_egg_coins(
     user_id,
     amount
 ):
-
     conn = get_connection()
-
     try:
-
         conn.execute(
             """
             UPDATE players
@@ -1240,30 +999,20 @@ def add_egg_coins(
                 int(user_id)
             )
         )
-
         conn.commit()
-
     finally:
-
         conn.close()
-
-
 def remove_egg_coins(
     user_id,
     amount
 ):
-
     amount = int(
         amount
     )
-
     if amount <= 0:
         return False
-
     conn = get_connection()
-
     try:
-
         cursor = conn.execute(
             """
             UPDATE players
@@ -1278,37 +1027,24 @@ def remove_egg_coins(
                 amount
             )
         )
-
         conn.commit()
-
         return cursor.rowcount > 0
-
     finally:
-
         conn.close()
-
-
 def get_balance(user_id):
-
     return (
         get_tap_coins(user_id),
         get_egg_coins(user_id)
     )
-
-
 # =========================================================
 # EGGS
 # =========================================================
-
 def add_egg(
     user_id,
     egg_id
 ):
-
     conn = get_connection()
-
     try:
-
         conn.execute(
             """
             INSERT INTO player_eggs (
@@ -1322,22 +1058,14 @@ def add_egg(
                 int(egg_id)
             )
         )
-
         conn.commit()
-
     finally:
-
         conn.close()
-
-
 def get_player_eggs(
     user_id
 ):
-
     conn = get_connection()
-
     try:
-
         rows = conn.execute(
             """
             SELECT egg_id
@@ -1347,26 +1075,18 @@ def get_player_eggs(
             """,
             (int(user_id),)
         ).fetchall()
-
         return [
             int(row['egg_id'])
             for row in rows
         ]
-
     finally:
-
         conn.close()
-
-
 def get_egg_count(
     user_id,
     egg_id
 ):
-
     conn = get_connection()
-
     try:
-
         row = conn.execute(
             """
             SELECT COUNT(*) AS count
@@ -1379,25 +1099,17 @@ def get_egg_count(
                 int(egg_id)
             )
         ).fetchone()
-
         return int(
             row['count']
         )
-
     finally:
-
         conn.close()
-
-
 def remove_one_egg(
     user_id,
     egg_id
 ):
-
     conn = get_connection()
-
     try:
-
         row = conn.execute(
             """
             SELECT id
@@ -1412,11 +1124,8 @@ def remove_one_egg(
                 int(egg_id)
             )
         ).fetchone()
-
         if not row:
-
             return False
-
         conn.execute(
             """
             DELETE FROM player_eggs
@@ -1426,24 +1135,46 @@ def remove_one_egg(
                 int(row['id']),
             )
         )
-
         conn.commit()
-
         return True
-
     finally:
-
         conn.close()
-
-
+def get_steal_candidates(
+    exclude_id,
+    limit=30
+):
+    """Игроки, у которых есть яйца (кроме самого вора)."""
+    conn = get_connection()
+    try:
+        rows = conn.execute(
+            """
+            SELECT
+                p.user_id AS user_id,
+                p.username AS username,
+                p.avatar AS avatar,
+                COUNT(e.id) AS eggs
+            FROM players p
+            JOIN player_eggs e
+                ON e.user_id = p.user_id
+            WHERE p.user_id != ?
+              AND p.blocked = 0
+            GROUP BY p.user_id
+            ORDER BY RANDOM()
+            LIMIT ?
+            """,
+            (
+                int(exclude_id),
+                int(limit)
+            )
+        ).fetchall()
+        return [dict(row) for row in rows]
+    finally:
+        conn.close()
 def get_total_eggs(
     user_id
 ):
-
     conn = get_connection()
-
     try:
-
         row = conn.execute(
             """
             SELECT COUNT(*) AS count
@@ -1452,20 +1183,14 @@ def get_total_eggs(
             """,
             (int(user_id),)
         ).fetchone()
-
         return int(
             row['count']
         )
-
     finally:
-
         conn.close()
-
-
 # =========================================================
 # EGG TYPES
 # =========================================================
-
 def add_egg_type(
     egg_id,
     name,
@@ -1473,11 +1198,8 @@ def add_egg_type(
     rarity_order=0,
     marketable=1
 ):
-
     conn = get_connection()
-
     try:
-
         conn.execute(
             """
             INSERT OR REPLACE INTO egg_types (
@@ -1497,22 +1219,14 @@ def add_egg_type(
                 int(marketable)
             )
         )
-
         conn.commit()
-
     finally:
-
         conn.close()
-
-
 def get_egg_type(
     egg_id
 ):
-
     conn = get_connection()
-
     try:
-
         return conn.execute(
             """
             SELECT *
@@ -1521,18 +1235,11 @@ def get_egg_type(
             """,
             (int(egg_id),)
         ).fetchone()
-
     finally:
-
         conn.close()
-
-
 def get_all_egg_types():
-
     conn = get_connection()
-
     try:
-
         return conn.execute(
             """
             SELECT *
@@ -1540,31 +1247,22 @@ def get_all_egg_types():
             ORDER BY rarity_order, egg_id
             """
         ).fetchall()
-
     finally:
-
         conn.close()
-
-
 # =========================================================
 # XP / LEVEL
 # =========================================================
-
 def get_progress(
     user_id
 ):
-
     player = get_player(
         user_id
     )
-
     if not player:
-
         return (
             0,
             1
         )
-
     return (
         int(
             player['xp']
@@ -1573,22 +1271,16 @@ def get_progress(
             player['level']
         )
     )
-
-
 def add_xp(
     user_id,
     amount
 ):
-
     amount = max(
         0,
         int(amount)
     )
-
     conn = get_connection()
-
     try:
-
         player = conn.execute(
             """
             SELECT xp
@@ -1597,16 +1289,12 @@ def add_xp(
             """,
             (int(user_id),)
         ).fetchone()
-
         if not player:
-
             return
-
         new_xp = (
             int(player['xp'])
             + amount
         )
-
         new_level = max(
             1,
             min(
@@ -1614,7 +1302,6 @@ def add_xp(
                 new_xp // 100 + 1
             )
         )
-
         conn.execute(
             """
             UPDATE players
@@ -1628,102 +1315,70 @@ def add_xp(
                 int(user_id)
             )
         )
-
         conn.commit()
-
     finally:
-
         conn.close()
-
-
 # =========================================================
 # LOGIN
 # =========================================================
-
 def get_login_streak(
     user_id
 ):
-
     player = get_player(
         user_id
     )
-
     if not player:
         return 0
-
     return int(
         player['login_streak']
     )
-
-
 def get_login_status(
     user_id
 ):
-
     player = get_player(
         user_id
     )
-
     if not player:
-
         return {
-
             'last_login':
                 None,
-
             'streak':
                 0
         }
-
     return {
-
         'last_login':
             player['last_login'],
-
         'streak':
             int(
                 player['login_streak']
             )
     }
-
-
 def get_login_info(
     user_id
 ):
-
     player = get_player(
         user_id
     )
-
     if not player:
-
         return (
             0,
             None
         )
-
     return (
         int(
             player['login_streak']
         ),
         player['last_login']
     )
-
-
 def update_login(
     user_id
 ):
-
     user_id = int(
         user_id
     )
-
     today = date.today()
-
     conn = get_connection()
-
     try:
-
         player = conn.execute(
             """
             SELECT
@@ -1734,49 +1389,31 @@ def update_login(
             """,
             (user_id,)
         ).fetchone()
-
         if not player:
-
             return 1
-
         last_login = player[
             'last_login'
         ]
-
         streak = int(
             player['login_streak']
         )
-
         if last_login == today.isoformat():
-
             return streak
-
         if last_login:
-
             try:
-
                 previous = date.fromisoformat(
                     last_login
                 )
-
                 if (
                     today - previous
                 ).days == 1:
-
                     streak += 1
-
                 else:
-
                     streak = 1
-
             except ValueError:
-
                 streak = 1
-
         else:
-
             streak = 1
-
         conn.execute(
             """
             UPDATE players
@@ -1790,24 +1427,15 @@ def update_login(
                 user_id
             )
         )
-
         conn.commit()
-
         return streak
-
     finally:
-
         conn.close()
-
-
 def set_daily_login(
     user_id
 ):
-
     conn = get_connection()
-
     try:
-
         conn.execute(
             """
             UPDATE players
@@ -1819,42 +1447,28 @@ def set_daily_login(
                 int(user_id)
             )
         )
-
         conn.commit()
-
     finally:
-
         conn.close()
-
-
 # =========================================================
 # DAILY BONUS
 # =========================================================
-
 def get_daily_bonus_date(
     user_id
 ):
-
     player = get_player(
         user_id
     )
-
     if not player:
         return None
-
     return player[
         'daily_bonus_date'
     ]
-
-
 def set_daily_bonus_date(
     user_id
 ):
-
     conn = get_connection()
-
     try:
-
         conn.execute(
             """
             UPDATE players
@@ -1866,25 +1480,17 @@ def set_daily_bonus_date(
                 int(user_id)
             )
         )
-
         conn.commit()
-
     finally:
-
         conn.close()
-
-
 # =========================================================
 # DAILY TASKS
 # =========================================================
-
 def _reset_tasks_if_needed(
     conn,
     user_id
 ):
-
     today = date.today().isoformat()
-
     player = conn.execute(
         """
         SELECT task_date
@@ -1893,12 +1499,9 @@ def _reset_tasks_if_needed(
         """,
         (int(user_id),)
     ).fetchone()
-
     if not player:
         return
-
     if player['task_date'] != today:
-
         conn.execute(
             """
             UPDATE players
@@ -1913,23 +1516,16 @@ def _reset_tasks_if_needed(
                 int(user_id)
             )
         )
-
-
 def get_daily_tasks(
     user_id
 ):
-
     conn = get_connection()
-
     try:
-
         _reset_tasks_if_needed(
             conn,
             user_id
         )
-
         conn.commit()
-
         row = conn.execute(
             """
             SELECT
@@ -1941,48 +1537,35 @@ def get_daily_tasks(
             """,
             (int(user_id),)
         ).fetchone()
-
         if not row:
-
             return (
                 0,
                 0,
                 0
             )
-
         return (
             int(
                 row['task_taps']
             ),
-
             int(
                 row['task_games']
             ),
-
             int(
                 row['task_eggs']
             )
         )
-
     finally:
-
         conn.close()
-
-
 def add_task_tap(
     user_id,
     amount=1
 ):
-
     conn = get_connection()
-
     try:
-
         _reset_tasks_if_needed(
             conn,
             user_id
         )
-
         conn.execute(
             """
             UPDATE players
@@ -1995,28 +1578,19 @@ def add_task_tap(
                 int(user_id)
             )
         )
-
         conn.commit()
-
     finally:
-
         conn.close()
-
-
 def add_task_game(
     user_id,
     amount=1
 ):
-
     conn = get_connection()
-
     try:
-
         _reset_tasks_if_needed(
             conn,
             user_id
         )
-
         conn.execute(
             """
             UPDATE players
@@ -2029,28 +1603,19 @@ def add_task_game(
                 int(user_id)
             )
         )
-
         conn.commit()
-
     finally:
-
         conn.close()
-
-
 def add_task_egg(
     user_id,
     amount=1
 ):
-
     conn = get_connection()
-
     try:
-
         _reset_tasks_if_needed(
             conn,
             user_id
         )
-
         conn.execute(
             """
             UPDATE players
@@ -2063,25 +1628,16 @@ def add_task_egg(
                 int(user_id)
             )
         )
-
         conn.commit()
-
     finally:
-
         conn.close()
-
-
 def has_daily_task_claim(
     user_id,
     task_id
 ):
-
     today = date.today().isoformat()
-
     conn = get_connection()
-
     try:
-
         row = conn.execute(
             """
             SELECT 1
@@ -2096,27 +1652,17 @@ def has_daily_task_claim(
                 str(task_id)
             )
         ).fetchone()
-
         return row is not None
-
     finally:
-
         conn.close()
-
-
 def add_daily_task_claim(
     user_id,
     task_id
 ):
-
     today = date.today().isoformat()
-
     conn = get_connection()
-
     try:
-
         try:
-
             conn.execute(
                 """
                 INSERT INTO daily_task_claims (
@@ -2132,36 +1678,22 @@ def add_daily_task_claim(
                     str(task_id)
                 )
             )
-
         except sqlite3.IntegrityError:
-
             conn.rollback()
-
             return False
-
         conn.commit()
-
         return True
-
     finally:
-
         conn.close()
-
-
 # =========================================================
 # ADVANCED DAILY QUESTS
 # =========================================================
-
 def clear_old_daily_quests(
     user_id
 ):
-
     today = date.today().isoformat()
-
     conn = get_connection()
-
     try:
-
         conn.execute(
             """
             DELETE FROM daily_quests
@@ -2173,28 +1705,18 @@ def clear_old_daily_quests(
                 today
             )
         )
-
         conn.commit()
-
     finally:
-
         conn.close()
-
-
 def get_daily_quests(
     user_id
 ):
-
     clear_old_daily_quests(
         user_id
     )
-
     today = date.today().isoformat()
-
     conn = get_connection()
-
     try:
-
         return conn.execute(
             """
             SELECT *
@@ -2208,12 +1730,8 @@ def get_daily_quests(
                 today
             )
         ).fetchall()
-
     finally:
-
         conn.close()
-
-
 def create_daily_quest(
     user_id,
     quest_id,
@@ -2221,13 +1739,9 @@ def create_daily_quest(
     reward_type,
     reward_amount
 ):
-
     today = date.today().isoformat()
-
     conn = get_connection()
-
     try:
-
         conn.execute(
             """
             INSERT INTO daily_quests (
@@ -2249,26 +1763,17 @@ def create_daily_quest(
                 int(reward_amount)
             )
         )
-
         conn.commit()
-
     finally:
-
         conn.close()
-
-
 def update_daily_quest(
     user_id,
     quest_id,
     amount=1
 ):
-
     today = date.today().isoformat()
-
     conn = get_connection()
-
     try:
-
         conn.execute(
             """
             UPDATE daily_quests
@@ -2289,25 +1794,16 @@ def update_daily_quest(
                 str(quest_id)
             )
         )
-
         conn.commit()
-
     finally:
-
         conn.close()
-
-
 def claim_daily_quest(
     user_id,
     quest_id
 ):
-
     today = date.today().isoformat()
-
     conn = get_connection()
-
     try:
-
         row = conn.execute(
             """
             SELECT *
@@ -2323,18 +1819,14 @@ def claim_daily_quest(
                 str(quest_id)
             )
         ).fetchone()
-
         if not row:
             return None
-
         if int(
             row['progress']
         ) < int(
             row['target']
         ):
-
             return None
-
         conn.execute(
             """
             UPDATE daily_quests
@@ -2345,31 +1837,21 @@ def claim_daily_quest(
                 int(row['id']),
             )
         )
-
         conn.commit()
-
         return dict(
             row
         )
-
     finally:
-
         conn.close()
-
-
 # =========================================================
 # ACHIEVEMENTS
 # =========================================================
-
 def has_achievement(
     user_id,
     achievement_id
 ):
-
     conn = get_connection()
-
     try:
-
         row = conn.execute(
             """
             SELECT 1
@@ -2383,23 +1865,15 @@ def has_achievement(
                 int(achievement_id)
             )
         ).fetchone()
-
         return row is not None
-
     finally:
-
         conn.close()
-
-
 def add_achievement(
     user_id,
     achievement_id
 ):
-
     conn = get_connection()
-
     try:
-
         conn.execute(
             """
             INSERT OR IGNORE INTO achievements (
@@ -2413,22 +1887,14 @@ def add_achievement(
                 int(achievement_id)
             )
         )
-
         conn.commit()
-
     finally:
-
         conn.close()
-
-
 def get_achievements(
     user_id
 ):
-
     conn = get_connection()
-
     try:
-
         rows = conn.execute(
             """
             SELECT achievement_id
@@ -2438,32 +1904,23 @@ def get_achievements(
             """,
             (int(user_id),)
         ).fetchall()
-
         return [
             int(
                 row['achievement_id']
             )
             for row in rows
         ]
-
     finally:
-
         conn.close()
-
-
 # =========================================================
 # ITEMS
 # =========================================================
-
 def add_item(
     user_id,
     item_id
 ):
-
     conn = get_connection()
-
     try:
-
         conn.execute(
             """
             INSERT INTO player_items (
@@ -2477,23 +1934,15 @@ def add_item(
                 int(item_id)
             )
         )
-
         conn.commit()
-
     finally:
-
         conn.close()
-
-
 def get_item_count(
     user_id,
     item_id
 ):
-
     conn = get_connection()
-
     try:
-
         row = conn.execute(
             """
             SELECT COUNT(*) AS count
@@ -2506,25 +1955,17 @@ def get_item_count(
                 int(item_id)
             )
         ).fetchone()
-
         return int(
             row['count']
         )
-
     finally:
-
         conn.close()
-
-
 def remove_item(
     user_id,
     item_id
 ):
-
     conn = get_connection()
-
     try:
-
         row = conn.execute(
             """
             SELECT id
@@ -2539,11 +1980,8 @@ def remove_item(
                 int(item_id)
             )
         ).fetchone()
-
         if not row:
-
             return False
-
         conn.execute(
             """
             DELETE FROM player_items
@@ -2553,24 +1991,15 @@ def remove_item(
                 int(row['id']),
             )
         )
-
         conn.commit()
-
         return True
-
     finally:
-
         conn.close()
-
-
 def get_player_items(
     user_id
 ):
-
     conn = get_connection()
-
     try:
-
         return conn.execute(
             """
             SELECT *
@@ -2580,25 +2009,17 @@ def get_player_items(
             """,
             (int(user_id),)
         ).fetchall()
-
     finally:
-
         conn.close()
-
-
 # =========================================================
 # CHESTS
 # =========================================================
-
 def add_chest(
     user_id,
     chest_id
 ):
-
     conn = get_connection()
-
     try:
-
         conn.execute(
             """
             INSERT INTO player_chests (
@@ -2612,23 +2033,15 @@ def add_chest(
                 int(chest_id)
             )
         )
-
         conn.commit()
-
     finally:
-
         conn.close()
-
-
 def get_chest_count(
     user_id,
     chest_id
 ):
-
     conn = get_connection()
-
     try:
-
         row = conn.execute(
             """
             SELECT COUNT(*) AS count
@@ -2641,24 +2054,16 @@ def get_chest_count(
                 int(chest_id)
             )
         ).fetchone()
-
         return int(
             row['count']
         )
-
     finally:
-
         conn.close()
-
-
 def get_player_chests(
     user_id
 ):
-
     conn = get_connection()
-
     try:
-
         return conn.execute(
             """
             SELECT *
@@ -2668,21 +2073,14 @@ def get_player_chests(
             """,
             (int(user_id),)
         ).fetchall()
-
     finally:
-
         conn.close()
-
-
 def remove_chest(
     user_id,
     chest_id
 ):
-
     conn = get_connection()
-
     try:
-
         row = conn.execute(
             """
             SELECT id
@@ -2697,11 +2095,8 @@ def remove_chest(
                 int(chest_id)
             )
         ).fetchone()
-
         if not row:
-
             return False
-
         conn.execute(
             """
             DELETE FROM player_chests
@@ -2711,20 +2106,13 @@ def remove_chest(
                 int(row['id']),
             )
         )
-
         conn.commit()
-
         return True
-
     finally:
-
         conn.close()
-
-
 # =========================================================
 # PETS
 # =========================================================
-
 def add_pet_type(
     pet_id,
     name,
@@ -2732,11 +2120,8 @@ def add_pet_type(
     bonus_type,
     bonus_value
 ):
-
     conn = get_connection()
-
     try:
-
         conn.execute(
             """
             INSERT OR REPLACE INTO pets (
@@ -2756,22 +2141,14 @@ def add_pet_type(
                 float(bonus_value)
             )
         )
-
         conn.commit()
-
     finally:
-
         conn.close()
-
-
 def get_pet_type(
     pet_id
 ):
-
     conn = get_connection()
-
     try:
-
         return conn.execute(
             """
             SELECT *
@@ -2780,18 +2157,11 @@ def get_pet_type(
             """,
             (int(pet_id),)
         ).fetchone()
-
     finally:
-
         conn.close()
-
-
 def get_all_pets():
-
     conn = get_connection()
-
     try:
-
         return conn.execute(
             """
             SELECT *
@@ -2799,21 +2169,14 @@ def get_all_pets():
             ORDER BY pet_id
             """
         ).fetchall()
-
     finally:
-
         conn.close()
-
-
 def add_pet(
     user_id,
     pet_id
 ):
-
     conn = get_connection()
-
     try:
-
         existing = conn.execute(
             """
             SELECT id
@@ -2827,11 +2190,8 @@ def add_pet(
                 int(pet_id)
             )
         ).fetchone()
-
         if existing:
-
             return False
-
         conn.execute(
             """
             INSERT INTO player_pets (
@@ -2846,24 +2206,15 @@ def add_pet(
                 int(pet_id)
             )
         )
-
         conn.commit()
-
         return True
-
     finally:
-
         conn.close()
-
-
 def get_player_pets(
     user_id
 ):
-
     conn = get_connection()
-
     try:
-
         return conn.execute(
             """
             SELECT
@@ -2880,20 +2231,13 @@ def get_player_pets(
             """,
             (int(user_id),)
         ).fetchall()
-
     finally:
-
         conn.close()
-
-
 def get_active_pet(
     user_id
 ):
-
     conn = get_connection()
-
     try:
-
         return conn.execute(
             """
             SELECT
@@ -2911,21 +2255,14 @@ def get_active_pet(
             """,
             (int(user_id),)
         ).fetchone()
-
     finally:
-
         conn.close()
-
-
 def set_active_pet(
     user_id,
     player_pet_id
 ):
-
     conn = get_connection()
-
     try:
-
         row = conn.execute(
             """
             SELECT id
@@ -2938,11 +2275,8 @@ def set_active_pet(
                 int(user_id)
             )
         ).fetchone()
-
         if not row:
-
             return False
-
         conn.execute(
             """
             UPDATE player_pets
@@ -2953,7 +2287,6 @@ def set_active_pet(
                 int(user_id),
             )
         )
-
         conn.execute(
             """
             UPDATE player_pets
@@ -2966,25 +2299,16 @@ def set_active_pet(
                 int(user_id)
             )
         )
-
         conn.commit()
-
         return True
-
     finally:
-
         conn.close()
-
-
 def remove_pet(
     user_id,
     player_pet_id
 ):
-
     conn = get_connection()
-
     try:
-
         cursor = conn.execute(
             """
             DELETE FROM player_pets
@@ -2996,48 +2320,33 @@ def remove_pet(
                 int(user_id)
             )
         )
-
         conn.commit()
-
         return cursor.rowcount > 0
-
     finally:
-
         conn.close()
-
-
 # =========================================================
 # MARKET
 # =========================================================
-
 def create_market_listing(
     seller_id,
     egg_id,
     price
 ):
-
     seller_id = int(
         seller_id
     )
-
     egg_id = int(
         egg_id
     )
-
     price = int(
         price
     )
-
     if price <= 0:
-
         raise ValueError(
             'Цена должна быть больше 0.'
         )
-
     conn = get_connection()
-
     try:
-
         egg_type = conn.execute(
             """
             SELECT marketable
@@ -3046,18 +2355,15 @@ def create_market_listing(
             """,
             (egg_id,)
         ).fetchone()
-
         if (
             egg_type
             and not int(
                 egg_type['marketable']
             )
         ):
-
             raise ValueError(
                 'Это яйцо нельзя продавать.'
             )
-
         egg = conn.execute(
             """
             SELECT id
@@ -3072,13 +2378,10 @@ def create_market_listing(
                 egg_id
             )
         ).fetchone()
-
         if not egg:
-
             raise ValueError(
                 'У тебя нет такого яйца.'
             )
-
         conn.execute(
             """
             DELETE FROM player_eggs
@@ -3088,7 +2391,6 @@ def create_market_listing(
                 int(egg['id']),
             )
         )
-
         cursor = conn.execute(
             """
             INSERT INTO market_listings (
@@ -3105,35 +2407,21 @@ def create_market_listing(
                 price
             )
         )
-
         listing_id = cursor.lastrowid
-
         conn.commit()
-
         return listing_id
-
     except Exception:
-
         conn.rollback()
-
         raise
-
     finally:
-
         conn.close()
-
-
 def get_market_listings(
     egg_id=None,
     limit=50
 ):
-
     conn = get_connection()
-
     try:
-
         if egg_id is None:
-
             return conn.execute(
                 """
                 SELECT *
@@ -3146,7 +2434,6 @@ def get_market_listings(
                     int(limit),
                 )
             ).fetchall()
-
         return conn.execute(
             """
             SELECT *
@@ -3161,20 +2448,13 @@ def get_market_listings(
                 int(limit)
             )
         ).fetchall()
-
     finally:
-
         conn.close()
-
-
 def get_market_listing(
     listing_id
 ):
-
     conn = get_connection()
-
     try:
-
         return conn.execute(
             """
             SELECT *
@@ -3183,29 +2463,20 @@ def get_market_listing(
             """,
             (int(listing_id),)
         ).fetchone()
-
     finally:
-
         conn.close()
-
-
 def cancel_market_listing(
     seller_id,
     listing_id
 ):
-
     seller_id = int(
         seller_id
     )
-
     listing_id = int(
         listing_id
     )
-
     conn = get_connection()
-
     try:
-
         row = conn.execute(
             """
             SELECT *
@@ -3219,11 +2490,8 @@ def cancel_market_listing(
                 seller_id
             )
         ).fetchone()
-
         if not row:
-
             return False
-
         conn.execute(
             """
             UPDATE market_listings
@@ -3237,7 +2505,6 @@ def cancel_market_listing(
                 seller_id
             )
         )
-
         conn.execute(
             """
             INSERT INTO player_eggs (
@@ -3251,39 +2518,25 @@ def cancel_market_listing(
                 int(row['egg_id'])
             )
         )
-
         conn.commit()
-
         return True
-
     except Exception:
-
         conn.rollback()
-
         raise
-
     finally:
-
         conn.close()
-
-
 def buy_market_listing(
     buyer_id,
     listing_id
 ):
-
     buyer_id = int(
         buyer_id
     )
-
     listing_id = int(
         listing_id
     )
-
     conn = get_connection()
-
     try:
-
         row = conn.execute(
             """
             SELECT *
@@ -3293,34 +2546,25 @@ def buy_market_listing(
             """,
             (listing_id,)
         ).fetchone()
-
         if not row:
-
             return None
-
         seller_id = int(
             row['seller_id']
         )
-
         if seller_id == buyer_id:
-
             return None
-
         price = int(
             row['price']
         )
-
         fee = max(
             1,
             int(
                 price * 0.05
             )
         )
-
         total = (
             price + fee
         )
-
         # Сначала атомарно снимаем
         # деньги у покупателя.
         cursor = conn.execute(
@@ -3337,13 +2581,9 @@ def buy_market_listing(
                 total
             )
         )
-
         if cursor.rowcount <= 0:
-
             conn.rollback()
-
             return None
-
         # Проверяем, что лот всё ещё активен.
         cursor = conn.execute(
             """
@@ -3359,13 +2599,9 @@ def buy_market_listing(
                 listing_id
             )
         )
-
         if cursor.rowcount <= 0:
-
             conn.rollback()
-
             return None
-
         # Продавец получает полную цену.
         conn.execute(
             """
@@ -3379,7 +2615,6 @@ def buy_market_listing(
                 seller_id
             )
         )
-
         # Яйцо получает покупатель.
         conn.execute(
             """
@@ -3394,45 +2629,29 @@ def buy_market_listing(
                 int(row['egg_id'])
             )
         )
-
         conn.commit()
-
         return {
-
             'price':
                 price,
-
             'fee':
                 fee,
-
             'seller_reward':
                 price,
-
             'egg_id':
                 int(
                     row['egg_id']
                 )
         }
-
     except Exception:
-
         conn.rollback()
-
         raise
-
     finally:
-
         conn.close()
-
-
 def get_player_market_listings(
     user_id
 ):
-
     conn = get_connection()
-
     try:
-
         return conn.execute(
             """
             SELECT *
@@ -3442,21 +2661,15 @@ def get_player_market_listings(
             """,
             (int(user_id),)
         ).fetchall()
-
     finally:
-
         conn.close()
-
-
 # =========================================================
 # EGG PROTECTION
 # =========================================================
-
 def set_egg_protection(
     user_id,
     seconds
 ):
-
     until = int(
         datetime.now().timestamp()
         + max(
@@ -3464,11 +2677,8 @@ def set_egg_protection(
             int(seconds)
         )
     )
-
     conn = get_connection()
-
     try:
-
         conn.execute(
             """
             INSERT INTO egg_protection (
@@ -3486,22 +2696,14 @@ def set_egg_protection(
                 until
             )
         )
-
         conn.commit()
-
     finally:
-
         conn.close()
-
-
 def is_egg_protected(
     user_id
 ):
-
     conn = get_connection()
-
     try:
-
         row = conn.execute(
             """
             SELECT protection_until
@@ -3510,21 +2712,15 @@ def is_egg_protected(
             """,
             (int(user_id),)
         ).fetchone()
-
         if not row:
-
             return False
-
         until = int(
             row['protection_until']
         )
-
         now = int(
             datetime.now().timestamp()
         )
-
         if until <= now:
-
             conn.execute(
                 """
                 DELETE FROM egg_protection
@@ -3532,33 +2728,22 @@ def is_egg_protected(
                 """,
                 (int(user_id),)
             )
-
             conn.commit()
-
             return False
-
         return True
-
     finally:
-
         conn.close()
-
-
 # =========================================================
 # STEAL
 # =========================================================
-
 def add_steal_attempt(
     thief_id,
     victim_id,
     egg_id,
     success
 ):
-
     conn = get_connection()
-
     try:
-
         conn.execute(
             """
             INSERT INTO steal_attempts (
@@ -3576,22 +2761,14 @@ def add_steal_attempt(
                 1 if success else 0
             )
         )
-
         conn.commit()
-
     finally:
-
         conn.close()
-
-
 def get_last_steal_attempt(
     thief_id
 ):
-
     conn = get_connection()
-
     try:
-
         return conn.execute(
             """
             SELECT *
@@ -3602,22 +2779,14 @@ def get_last_steal_attempt(
             """,
             (int(thief_id),)
         ).fetchone()
-
     finally:
-
         conn.close()
-
-
 def get_steal_attempts_today(
     thief_id
 ):
-
     today = date.today().isoformat()
-
     conn = get_connection()
-
     try:
-
         row = conn.execute(
             """
             SELECT COUNT(*) AS count
@@ -3630,38 +2799,27 @@ def get_steal_attempts_today(
                 today
             )
         ).fetchone()
-
         return int(
             row['count']
         )
-
     finally:
-
         conn.close()
-
-
 def transfer_stolen_egg(
     thief_id,
     victim_id,
     egg_id
 ):
-
     thief_id = int(
         thief_id
     )
-
     victim_id = int(
         victim_id
     )
-
     egg_id = int(
         egg_id
     )
-
     conn = get_connection()
-
     try:
-
         row = conn.execute(
             """
             SELECT id
@@ -3676,11 +2834,8 @@ def transfer_stolen_egg(
                 egg_id
             )
         ).fetchone()
-
         if not row:
-
             return False
-
         conn.execute(
             """
             DELETE FROM player_eggs
@@ -3690,7 +2845,6 @@ def transfer_stolen_egg(
                 int(row['id']),
             )
         )
-
         conn.execute(
             """
             INSERT INTO player_eggs (
@@ -3704,40 +2858,26 @@ def transfer_stolen_egg(
                 egg_id
             )
         )
-
         conn.commit()
-
         return True
-
     except Exception:
-
         conn.rollback()
-
         raise
-
     finally:
-
         conn.close()
-
-
 # =========================================================
 # BOSS
 # =========================================================
-
 def start_boss_event(
     boss_name='Король Яиц',
     max_hp=100000,
     duration_seconds=86400
 ):
-
     now = int(
         datetime.now().timestamp()
     )
-
     conn = get_connection()
-
     try:
-
         conn.execute(
             """
             INSERT OR REPLACE INTO boss_event (
@@ -3769,33 +2909,23 @@ def start_boss_event(
                 now + int(duration_seconds)
             )
         )
-
         conn.execute(
             """
             DELETE FROM boss_participants
             """
         )
-
         conn.execute(
             """
             UPDATE players
             SET boss_damage = 0
             """
         )
-
         conn.commit()
-
     finally:
-
         conn.close()
-
-
 def get_boss_event():
-
     conn = get_connection()
-
     try:
-
         row = conn.execute(
             """
             SELECT *
@@ -3803,32 +2933,24 @@ def get_boss_event():
             WHERE id = 1
             """
         ).fetchone()
-
         if not row:
-
             return None
-
         now = int(
             datetime.now().timestamp()
         )
-
         current_hp = int(
             row['current_hp']
         )
-
         ends_at = int(
             row['ends_at']
         )
-
         active = int(
             row['active']
         )
-
         if (
             active == 1
             and ends_at <= now
         ):
-
             conn.execute(
                 """
                 UPDATE boss_event
@@ -3836,9 +2958,7 @@ def get_boss_event():
                 WHERE id = 1
                 """
             )
-
             conn.commit()
-
             row = conn.execute(
                 """
                 SELECT *
@@ -3846,31 +2966,21 @@ def get_boss_event():
                 WHERE id = 1
                 """
             ).fetchone()
-
         return row
-
     finally:
-
         conn.close()
-
-
 def damage_boss(
     user_id,
     amount
 ):
-
     amount = max(
         0,
         int(amount)
     )
-
     if amount <= 0:
         return 0
-
     conn = get_connection()
-
     try:
-
         row = conn.execute(
             """
             SELECT *
@@ -3878,25 +2988,18 @@ def damage_boss(
             WHERE id = 1
             """
         ).fetchone()
-
         if not row:
-
             return 0
-
         now = int(
             datetime.now().timestamp()
         )
-
         if int(
             row['active']
         ) != 1:
-
             return 0
-
         if int(
             row['ends_at']
         ) <= now:
-
             conn.execute(
                 """
                 UPDATE boss_event
@@ -3904,34 +3007,30 @@ def damage_boss(
                 WHERE id = 1
                 """
             )
-
             conn.commit()
-
             return 0
-
         current_hp = int(
             row['current_hp']
         )
-
         if current_hp <= 0:
-
             return 0
-
         actual_damage = min(
             amount,
             current_hp
         )
-
         new_hp = (
             current_hp
             - actual_damage
         )
-
         conn.execute(
             """
             UPDATE boss_event
             SET current_hp = ?,
-                active = ?
+                active = ?,
+                ends_at = CASE
+                    WHEN ? <= 0 THEN ?
+                    ELSE ends_at
+                END
             WHERE id = 1
               AND current_hp = ?
               AND active = 1
@@ -3939,18 +3038,16 @@ def damage_boss(
             (
                 new_hp,
                 0 if new_hp <= 0 else 1,
+                new_hp,
+                now,
                 current_hp
             )
         )
-
         if conn.execute(
             "SELECT changes()"
         ).fetchone()[0] != 1:
-
             conn.rollback()
-
             return 0
-
         conn.execute(
             """
             INSERT INTO boss_participants (
@@ -3970,7 +3067,6 @@ def damage_boss(
                 actual_damage
             )
         )
-
         conn.execute(
             """
             UPDATE players
@@ -3983,28 +3079,16 @@ def damage_boss(
                 int(user_id)
             )
         )
-
         conn.commit()
-
         return actual_damage
-
     except Exception:
-
         conn.rollback()
-
         raise
-
     finally:
-
         conn.close()
-
-
 def get_boss_participants():
-
     conn = get_connection()
-
     try:
-
         return conn.execute(
             """
             SELECT
@@ -4018,20 +3102,13 @@ def get_boss_participants():
             ORDER BY bp.damage DESC
             """
         ).fetchall()
-
     finally:
-
         conn.close()
-
-
 def get_boss_damage(
     user_id
 ):
-
     conn = get_connection()
-
     try:
-
         row = conn.execute(
             """
             SELECT damage
@@ -4040,13 +3117,10 @@ def get_boss_damage(
             """,
             (int(user_id),)
         ).fetchone()
-
         if row:
-
             return int(
                 row['damage']
             )
-
         player = conn.execute(
             """
             SELECT boss_damage
@@ -4055,37 +3129,25 @@ def get_boss_damage(
             """,
             (int(user_id),)
         ).fetchone()
-
         if not player:
-
             return 0
-
         return int(
             player['boss_damage']
         )
-
     finally:
-
         conn.close()
-
-
 def add_boss_damage(
     user_id,
     amount
 ):
-
     amount = max(
         0,
         int(amount)
     )
-
     if amount <= 0:
         return
-
     conn = get_connection()
-
     try:
-
         conn.execute(
             """
             INSERT INTO boss_participants (
@@ -4105,7 +3167,6 @@ def add_boss_damage(
                 amount
             )
         )
-
         conn.execute(
             """
             UPDATE players
@@ -4118,22 +3179,14 @@ def add_boss_damage(
                 int(user_id)
             )
         )
-
         conn.commit()
-
     finally:
-
         conn.close()
-
-
 def claim_boss_reward(
     user_id
 ):
-
     conn = get_connection()
-
     try:
-
         boss = conn.execute(
             """
             SELECT *
@@ -4141,15 +3194,11 @@ def claim_boss_reward(
             WHERE id = 1
             """
         ).fetchone()
-
         if not boss:
-
             return None
-
         now = int(
             datetime.now().timestamp()
         )
-
         # Награда доступна после победы
         # или после завершения события.
         finished = (
@@ -4163,11 +3212,8 @@ def claim_boss_reward(
                 boss['active']
             ) == 0
         )
-
         if not finished:
-
             return None
-
         participant = conn.execute(
             """
             SELECT *
@@ -4176,17 +3222,12 @@ def claim_boss_reward(
             """,
             (int(user_id),)
         ).fetchone()
-
         if not participant:
-
             return None
-
         if int(
             participant['reward_claimed']
         ) == 1:
-
             return None
-
         conn.execute(
             """
             UPDATE boss_participants
@@ -4197,34 +3238,23 @@ def claim_boss_reward(
                 int(user_id),
             )
         )
-
         conn.commit()
-
         return {
-
             'damage':
                 int(
                     participant['damage']
                 )
         }
-
     finally:
-
         conn.close()
-
-
 # =========================================================
 # EGG PASS
 # =========================================================
-
 def ensure_egg_pass(
     user_id
 ):
-
     conn = get_connection()
-
     try:
-
         conn.execute(
             """
             INSERT OR IGNORE INTO egg_pass (
@@ -4239,26 +3269,17 @@ def ensure_egg_pass(
                 int(user_id),
             )
         )
-
         conn.commit()
-
     finally:
-
         conn.close()
-
-
 def get_egg_pass(
     user_id
 ):
-
     ensure_egg_pass(
         user_id
     )
-
     conn = get_connection()
-
     try:
-
         return conn.execute(
             """
             SELECT *
@@ -4267,30 +3288,21 @@ def get_egg_pass(
             """,
             (int(user_id),)
         ).fetchone()
-
     finally:
-
         conn.close()
-
-
 def add_egg_pass_xp(
     user_id,
     amount
 ):
-
     amount = max(
         0,
         int(amount)
     )
-
     ensure_egg_pass(
         user_id
     )
-
     conn = get_connection()
-
     try:
-
         row = conn.execute(
             """
             SELECT xp
@@ -4299,20 +3311,16 @@ def add_egg_pass_xp(
             """,
             (int(user_id),)
         ).fetchone()
-
         if not row:
             return
-
         new_xp = (
             int(row['xp'])
             + amount
         )
-
         new_level = min(
             30,
             new_xp // 100
         )
-
         conn.execute(
             """
             UPDATE egg_pass
@@ -4326,27 +3334,18 @@ def add_egg_pass_xp(
                 int(user_id)
             )
         )
-
         conn.commit()
-
     finally:
-
         conn.close()
-
-
 def set_egg_pass_premium(
     user_id,
     premium=True
 ):
-
     ensure_egg_pass(
         user_id
     )
-
     conn = get_connection()
-
     try:
-
         conn.execute(
             """
             UPDATE egg_pass
@@ -4358,24 +3357,16 @@ def set_egg_pass_premium(
                 int(user_id)
             )
         )
-
         conn.commit()
-
     finally:
-
         conn.close()
-
-
 def has_egg_pass_reward(
     user_id,
     level,
     track
 ):
-
     conn = get_connection()
-
     try:
-
         row = conn.execute(
             """
             SELECT 1
@@ -4390,76 +3381,52 @@ def has_egg_pass_reward(
                 str(track)
             )
         ).fetchone()
-
         return row is not None
-
     finally:
-
         conn.close()
-
-
 def claim_egg_pass_reward(
     user_id,
     level,
     track
 ):
-
     level = int(
         level
     )
-
     track = str(
         track
     )
-
     if not 1 <= level <= 30:
-
         return False
-
     if track not in (
         'free',
         'premium'
     ):
-
         return False
-
     state = get_egg_pass(
         user_id
     )
-
     if not state:
-
         return False
-
     if int(
         state['level']
     ) < level:
-
         return False
-
     if (
         track == 'premium'
         and int(
             state['premium']
         ) != 1
     ):
-
         return False
-
     if has_egg_pass_reward(
         user_id,
         level,
         track
     ):
-
         return False
-
     conn = get_connection()
-
     try:
-
         try:
-
             conn.execute(
                 """
                 INSERT INTO egg_pass_claims (
@@ -4475,52 +3442,34 @@ def claim_egg_pass_reward(
                     track
                 )
             )
-
         except sqlite3.IntegrityError:
-
             conn.rollback()
-
             return False
-
         conn.commit()
-
         return True
-
     finally:
-
         conn.close()
-
-
 # =========================================================
 # AVATAR
 # =========================================================
-
 def get_avatar(
     user_id
 ):
-
     player = get_player(
         user_id
     )
-
     if not player:
         return '🥚'
-
     return (
         player['avatar']
         or '🥚'
     )
-
-
 def set_avatar(
     user_id,
     avatar
 ):
-
     conn = get_connection()
-
     try:
-
         conn.execute(
             """
             UPDATE players
@@ -4532,26 +3481,17 @@ def set_avatar(
                 int(user_id)
             )
         )
-
         conn.commit()
-
     finally:
-
         conn.close()
-
-
 # =========================================================
 # BLOCK
 # =========================================================
-
 def block_player(
     user_id
 ):
-
     conn = get_connection()
-
     try:
-
         conn.execute(
             """
             UPDATE players
@@ -4562,22 +3502,14 @@ def block_player(
                 int(user_id),
             )
         )
-
         conn.commit()
-
     finally:
-
         conn.close()
-
-
 def unblock_player(
     user_id
 ):
-
     conn = get_connection()
-
     try:
-
         conn.execute(
             """
             UPDATE players
@@ -4588,40 +3520,26 @@ def unblock_player(
                 int(user_id),
             )
         )
-
         conn.commit()
-
     finally:
-
         conn.close()
-
-
 def is_blocked(
     user_id
 ):
-
     player = get_player(
         user_id
     )
-
     if not player:
         return False
-
     return bool(
         player['blocked']
     )
-
-
 # =========================================================
 # PLAYERS / LEADERBOARD
 # =========================================================
-
 def get_all_players():
-
     conn = get_connection()
-
     try:
-
         return conn.execute(
             """
             SELECT *
@@ -4630,20 +3548,13 @@ def get_all_players():
                      tap_coins DESC
             """
         ).fetchall()
-
     finally:
-
         conn.close()
-
-
 def get_top_players(
     limit=10
 ):
-
     conn = get_connection()
-
     try:
-
         return conn.execute(
             """
             SELECT *
@@ -4656,34 +3567,243 @@ def get_top_players(
                 int(limit),
             )
         ).fetchall()
-
     finally:
-
         conn.close()
-
-
 def get_player_rank(
     user_id
 ):
-
     players = get_all_players()
-
     for position, player in enumerate(
         players,
         start=1
     ):
-
         if int(
             player['user_id']
         ) == int(user_id):
-
             return position
-
     return None
-
-
+# =========================================================
+# BOOSTERS
+# =========================================================
+def get_booster_until(
+    user_id,
+    item_id
+):
+    conn = get_connection()
+    try:
+        row = conn.execute(
+            """
+            SELECT until
+            FROM player_boosters
+            WHERE user_id = ?
+              AND item_id = ?
+            """,
+            (
+                int(user_id),
+                int(item_id)
+            )
+        ).fetchone()
+        if not row:
+            return 0
+        return int(
+            row['until']
+        )
+    finally:
+        conn.close()
+def get_active_boosters(
+    user_id
+):
+    """{item_id: unix_time_окончания} только для активных."""
+    now = int(
+        datetime.now().timestamp()
+    )
+    conn = get_connection()
+    try:
+        rows = conn.execute(
+            """
+            SELECT item_id, until
+            FROM player_boosters
+            WHERE user_id = ?
+              AND until > ?
+            """,
+            (
+                int(user_id),
+                now
+            )
+        ).fetchall()
+        return {
+            int(row['item_id']):
+                int(row['until'])
+            for row in rows
+        }
+    finally:
+        conn.close()
+def extend_booster(
+    user_id,
+    item_id,
+    seconds
+):
+    """Активирует бустер. Если уже активен - время суммируется."""
+    now = int(
+        datetime.now().timestamp()
+    )
+    conn = get_connection()
+    try:
+        row = conn.execute(
+            """
+            SELECT until
+            FROM player_boosters
+            WHERE user_id = ?
+              AND item_id = ?
+            """,
+            (
+                int(user_id),
+                int(item_id)
+            )
+        ).fetchone()
+        base = now
+        if row:
+            base = max(
+                now,
+                int(row['until'])
+            )
+        until = base + int(seconds)
+        conn.execute(
+            """
+            INSERT INTO player_boosters (
+                user_id,
+                item_id,
+                until
+            )
+            VALUES (?, ?, ?)
+            ON CONFLICT(user_id, item_id)
+            DO UPDATE SET
+                until = excluded.until
+            """,
+            (
+                int(user_id),
+                int(item_id),
+                until
+            )
+        )
+        conn.commit()
+        return until
+    finally:
+        conn.close()
+# =========================================================
+# DAILY GAME REWARD LIMIT
+# =========================================================
+def get_game_reward_today(
+    user_id
+):
+    conn = get_connection()
+    try:
+        row = conn.execute(
+            """
+            SELECT amount
+            FROM daily_game_rewards
+            WHERE user_id = ?
+              AND reward_date = ?
+            """,
+            (
+                int(user_id),
+                date.today().isoformat()
+            )
+        ).fetchone()
+        if not row:
+            return 0
+        return int(
+            row['amount']
+        )
+    finally:
+        conn.close()
+def add_game_reward_today(
+    user_id,
+    amount
+):
+    conn = get_connection()
+    try:
+        conn.execute(
+            """
+            INSERT INTO daily_game_rewards (
+                user_id,
+                reward_date,
+                amount
+            )
+            VALUES (?, ?, ?)
+            ON CONFLICT(user_id, reward_date)
+            DO UPDATE SET
+                amount =
+                    daily_game_rewards.amount
+                    + excluded.amount
+            """,
+            (
+                int(user_id),
+                date.today().isoformat(),
+                int(amount)
+            )
+        )
+        conn.commit()
+    finally:
+        conn.close()
+# =========================================================
+# EGG PASS PREMIUM (атомарная покупка)
+# =========================================================
+def buy_egg_pass_premium(
+    user_id,
+    price
+):
+    """
+    Возвращает 'ok', 'already' или 'funds'.
+    Списание Egg Coins и включение Premium - одной транзакцией.
+    """
+    ensure_egg_pass(
+        user_id
+    )
+    price = int(
+        price
+    )
+    conn = get_connection()
+    try:
+        cursor = conn.execute(
+            """
+            UPDATE egg_pass
+            SET premium = 1
+            WHERE user_id = ?
+              AND premium = 0
+            """,
+            (
+                int(user_id),
+            )
+        )
+        if cursor.rowcount <= 0:
+            conn.rollback()
+            return 'already'
+        cursor = conn.execute(
+            """
+            UPDATE players
+            SET egg_coins =
+                egg_coins - ?
+            WHERE user_id = ?
+              AND egg_coins >= ?
+            """,
+            (
+                price,
+                int(user_id),
+                price
+            )
+        )
+        if cursor.rowcount <= 0:
+            conn.rollback()
+            return 'funds'
+        conn.commit()
+        return 'ok'
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
 # =========================================================
 # START DATABASE
 # =========================================================
-
 init_database()
