@@ -3717,23 +3717,30 @@ def api_steal():
             snap(uid)
     )
 # =========================================================
+# ADMIN BOT (панель управления)
+# =========================================================
+#
+# Стартует при загрузке модуля, поэтому работает и с
+# `gunicorn server:app`, и с `python server.py`.
+# Нужны переменные ADMIN_BOT_TOKEN и ADMIN_IDS,
+# иначе бот просто не запускается.
+#
+try:
+    import admin_bot
+    admin_bot.configure(
+        EGGS,
+        CHESTS,
+        ITEMS,
+        PETS
+    )
+    admin_bot.start_in_thread()
+except Exception as error:
+    print(f'[admin_bot] не запущен: {error}')
+# =========================================================
 # START SERVER
 # =========================================================
 if __name__ == '__main__':
     database.init_database()
-    # Админ-бот (панель управления) стартует в фоне, если заданы
-    # ADMIN_BOT_TOKEN и ADMIN_IDS. Иначе игра работает как обычно.
-    try:
-        import admin_bot
-        admin_bot.configure(
-            EGGS,
-            CHESTS,
-            ITEMS,
-            PETS
-        )
-        admin_bot.start_in_thread()
-    except Exception as error:
-        print(f'[admin_bot] не запущен: {error}')
     app.run(
         host='0.0.0.0',
         port=PORT,
