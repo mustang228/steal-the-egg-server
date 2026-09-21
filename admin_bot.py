@@ -867,9 +867,12 @@ def handle_callback(admin, chat, mid, data):
     elif cmd == 'ptg':
         uid, item = int(parts[1]), int(parts[2])
         name = name_of('pets', item)
-        if database.add_pet(uid, item):
+        added, auto = database.grant_pet(uid, item)
+        if added:
             add_log(admin, 'pet_add', uid, name)
             note = f'✅ Выдан: <b>{esc(name)}</b>'
+            if auto:
+                note += ' (включён автоматически)'
         else:
             note = f'⚠️ У игрока уже есть {esc(name)}.'
         show(chat, mid, *pick_list_screen(
