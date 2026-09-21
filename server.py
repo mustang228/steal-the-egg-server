@@ -1,12 +1,11 @@
 import os
+import gzip
 import time
 import hmac
 import hashlib
 import json
 import random
-import sqlite3
-import threading
-from datetime import date
+from datetime import date, datetime, timedelta
 from urllib.parse import parse_qsl
 from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
@@ -28,7 +27,8 @@ BASE_DIR = os.path.dirname(
 )
 app = Flask(
     __name__,
-    static_folder=None
+    static_folder=BASE_DIR,
+    static_url_path=''
 )
 CORS(
     app,
@@ -369,23 +369,6 @@ PET_BONUS = {
 # =========================================================
 PASS_MAX = 30
 PASS_XP = 100
-# Цена Premium Egg Pass в Egg Coins.
-# None - Premium недоступен (кнопка покупки скрыта).
-PREMIUM_PASS_PRICE = 2000
-# Максимум Egg Coins в день за мини-игры
-# (угадай число, математика, крестики-нолики).
-# None - без лимита.
-GAME_DAILY_CAP = 300
-# Сколько секунд после конца босса можно забрать награду,
-# прежде чем появится следующий босс.
-BOSS_CLAIM_WINDOW = 6 * 3600
-BOSS_NAMES = [
-    'Король Яиц',
-    'Тёмный Хранитель',
-    'Яичный Дракон',
-    'Кибер-Курица'
-]
-BOSS_LOCK = threading.Lock()
 # =========================================================
 # BOSS
 # =========================================================
@@ -394,7 +377,7 @@ BOSS_DURATION = 86400
 # =========================================================
 # GAME MEMORY
 # =========================================================
-# (бустеры теперь хранятся в БД: таблица player_boosters)
+active = {}
 guess = {}
 math = {}
 tic = {}
@@ -410,9 +393,7 @@ database.init_database()
 # PET BONUS
 # =========================================================
 def pet_bonus(uid):
-    pet = database.get_active_pet(
-        uid
-    )
+    pet = database.get_active_pet(uid)
     if not pet:
         return 0
     try:
@@ -432,22 +413,6 @@ def pet_bonus(uid):
         rarity,
         0
     )
-def apply_pet_bonus(uid, amount):
-    """
-    Прибавляет бонус активного питомца к сумме Egg Coins.
-    Дробная часть округляется случайно (5% от 4 монет = 4.2 ->
-    4 монеты, а с шансом 20% - 5), поэтому даже на маленьких
-    наградах бонус реально работает.
-    """
-    amount = int(amount)
-    bonus = pet_bonus(uid)
-    if bonus <= 0 or amount <= 0:
-        return amount
-    exact = amount * (1 + bonus)
-    whole = int(exact)
-    if random.random() < exact - whole:
-        whole += 1
-    return whole
 # =========================================================
 # EGG PASS
 # =========================================================
@@ -621,9 +586,12 @@ def expiry(
     uid,
     item_id
 ):
-    return database.get_booster_until(
-        uid,
-        item_id
+    return active.get(
+        (
+            uid,
+            item_id
+        ),
+        0
     )
 def has(
     uid,
@@ -662,53 +630,17 @@ def add_game_coins(
     amount = int(amount)
     if has(uid, 2):
         amount += 1
-    amount = apply_pet_bonus(
-        uid,
-        amount
-    )
+    bonus = pet_bonus(uid)
+    if bonus > 0:
+        amount = int(
+            amount * (
+                1 + bonus
+            )
+        )
     database.add_egg_coins(
         uid,
         amount
     )
-# =========================================================
-# MINIGAME REWARD
-# =========================================================
-def minigame_reward(
-    uid,
-    amount
-):
-    """
-    Награда за мини-игру: бустер Egg Coins, бонус питомца
-    и дневной лимит GAME_DAILY_CAP.
-    Возвращает (начислено, упёрлись_в_лимит).
-    """
-    amount = int(amount)
-    if has(uid, 2):
-        amount += 1
-    amount = apply_pet_bonus(
-        uid,
-        amount
-    )
-    capped = False
-    if GAME_DAILY_CAP:
-        left = max(
-            0,
-            GAME_DAILY_CAP
-            - database.get_game_reward_today(uid)
-        )
-        if amount > left:
-            amount = left
-            capped = True
-    if amount > 0:
-        database.add_egg_coins(
-            uid,
-            amount
-        )
-        database.add_game_reward_today(
-            uid,
-            amount
-        )
-    return amount, capped
 # =========================================================
 # EGG COUNTS
 # =========================================================
@@ -743,7 +675,10 @@ def snap(uid):
         uid
     )
     owned = egg_counts(uid)
-    xp_required = 100
+    xp_required = max(
+        100,
+        level * 100
+    )
     return {
         'tap_coins':
             int(tap),
@@ -753,8 +688,8 @@ def snap(uid):
             int(current_xp),
         'level':
             int(level),
-        'xp_required': int(xp_required),
-        'xp_in_level': int(current_xp) % 100,
+        'xp_required':
+            int(xp_required),
         'streak':
             int(streak),
         'last_login':
@@ -881,17 +816,6 @@ def achievements(uid):
             })
     return unlocked
 # =========================================================
-# REQUEST BODY
-# =========================================================
-def body():
-    """JSON-тело запроса; всегда словарь (мусор -> пустой dict)."""
-    data = request.get_json(
-        silent=True
-    )
-    if isinstance(data, dict):
-        return data
-    return {}
-# =========================================================
 # JSON ERROR
 # =========================================================
 def json_error(
@@ -906,47 +830,61 @@ def json_error(
         status
     )
 # =========================================================
-# ERROR HANDLERS
+# INDEX
+# =========================================================
+# =========================================================
+# HEALTH (быстрый ответ без авторизации и БД)
 # =========================================================
 #
-# Любая ошибка возвращается как JSON (а не HTML-страница), поэтому
-# клиент показывает понятное сообщение и может повторить запрос.
+# Нужен, чтобы «будить» сервер на Render и для пинга
+# внешним сервисом (UptimeRobot / cron-job.org).
 #
-@app.errorhandler(sqlite3.OperationalError)
-def handle_db_busy(error):
-    app.logger.error(
-        'SQLite: %s',
-        error
-    )
-    return json_error(
-        'Сервер занят, попробуй ещё раз через секунду.',
-        503
-    )
-@app.errorhandler(Exception)
-def handle_unexpected(error):
-    from werkzeug.exceptions import HTTPException
-    if isinstance(error, HTTPException):
-        return error
-    app.logger.exception(
-        'Необработанная ошибка'
-    )
-    return json_error(
-        'Внутренняя ошибка сервера.',
-        500
+@app.get('/health')
+def health():
+    return jsonify(
+        ok=True
     )
 # =========================================================
-# INDEX / STATIC / HEALTH
+# GZIP-СЖАТИЕ (JS/CSS/HTML/JSON)
 # =========================================================
-#
-# ВАЖНО: раньше Flask раздавал ВСЮ папку проекта, включая
-# players.db, server.py и database.py. Теперь отдаются
-# только три файла интерфейса.
-#
-STATIC_FILES = {
-    'index.html',
-    'style.css',
-    'script.js'
-}
+@app.after_request
+def compress_response(response):
+    try:
+        if (
+            response.status_code != 200
+            or 'Content-Encoding' in response.headers
+            or 'gzip' not in request.headers.get(
+                'Accept-Encoding',
+                ''
+            )
+            or not (
+                response.mimetype.startswith('text/')
+                or response.mimetype in (
+                    'application/json',
+                    'application/javascript'
+                )
+            )
+        ):
+            return response
+        response.direct_passthrough = False
+        data = response.get_data()
+        if len(data) < 1024:
+            return response
+        packed = gzip.compress(
+            data,
+            5
+        )
+        response.set_data(
+            packed
+        )
+        response.headers['Content-Encoding'] = 'gzip'
+        response.headers['Content-Length'] = str(
+            len(packed)
+        )
+        response.headers['Vary'] = 'Accept-Encoding'
+    except Exception:
+        pass
+    return response
 @app.get('/')
 def index():
     index_path = os.path.join(
@@ -964,22 +902,6 @@ def index():
             'STEAL THE EGG '
             'server is running!'
         )
-    )
-@app.get('/health')
-def health():
-    return jsonify(
-        ok=True
-    )
-@app.get('/<path:filename>')
-def static_files(filename):
-    if filename in STATIC_FILES:
-        return send_from_directory(
-            BASE_DIR,
-            filename
-        )
-    return json_error(
-        'Не найдено.',
-        404
     )
 # =========================================================
 # INIT
@@ -1099,7 +1021,7 @@ def tap():
         )
         if now - timestamp < 2
     ]
-    if len(old) >= 30:
+    if len(old) >= 80:
         return json_error(
             'Слишком быстро. Подожди немного.',
             429
@@ -1157,10 +1079,7 @@ def exchange():
             'Нужно минимум 30 Tap Coins.'
         )
     spent = count * 30
-    received = apply_pet_bonus(
-        uid,
-        count * 10
-    )
+    received = count * 10
     if not database.remove_tap_coins(
         uid,
         spent
@@ -1251,7 +1170,7 @@ def guess_answer():
         )
     try:
         value = int(
-            (body() or {}).get(
+            (request.json or {}).get(
                 'guess'
             )
         )
@@ -1281,9 +1200,12 @@ def guess_answer():
         10: 1
     }
     if value == game['n']:
-        reward, capped = minigame_reward(
+        reward = rewards[
+            attempts
+        ]
+        add_game_coins(
             uid,
-            rewards[attempts]
+            reward
         )
         database.add_task_game(
             uid
@@ -1303,7 +1225,11 @@ def guess_answer():
         )
         return jsonify(
             ok=True,
-            result='win', reward=reward, capped=capped, number=number,
+            result='win',
+            reward=
+                reward,
+            number=
+                number,
             attempts=
                 attempts,
             data=
@@ -1430,7 +1356,7 @@ def math_answer():
         )
     try:
         value = int(
-            (body() or {}).get(
+            (request.json or {}).get(
                 'answer'
             )
         )
@@ -1442,12 +1368,18 @@ def math_answer():
             'Введите число.'
         )
     correct = game['answer']
+    database.add_task_game(
+        uid
+    )
     if value == correct:
-        math.pop(uid, None)
-        database.add_task_game(uid)
-        reward, capped = minigame_reward(
+        math.pop(
             uid,
-            4
+            None
+        )
+        reward = 4
+        add_game_coins(
+            uid,
+            reward
         )
         add_pass_xp(
             uid,
@@ -1459,7 +1391,11 @@ def math_answer():
         )
         return jsonify(
             ok=True,
-            result='win', correct=correct, reward=reward, capped=capped,
+            result='win',
+            correct=
+                correct,
+            reward=
+                reward,
             data=
                 snap(uid),
             new_achievements=
@@ -1573,9 +1509,8 @@ def finish_tic(
     reward=0,
     xp_amount=0
 ):
-    capped = False
     if reward:
-        reward, capped = minigame_reward(
+        add_game_coins(
             uid,
             reward
         )
@@ -1597,7 +1532,12 @@ def finish_tic(
     )
     return jsonify(
         ok=True,
-        board=board, result=result, reward=reward, capped=capped,
+        board=
+            board,
+        result=
+            result,
+        reward=
+            reward,
         data=
             snap(uid),
         new_achievements=
@@ -1623,7 +1563,7 @@ def tic_move():
         )
     try:
         index = int(
-            (body() or {}).get(
+            (request.json or {}).get(
                 'index'
             )
         )
@@ -1749,7 +1689,7 @@ def buy_egg():
     )
     try:
         egg_id = int(
-            (body() or {}).get(
+            (request.json or {}).get(
                 'egg_id'
             )
         )
@@ -1816,7 +1756,7 @@ def open_egg():
     )
     try:
         egg_id = int(
-            (body() or {}).get(
+            (request.json or {}).get(
                 'egg_id'
             )
         )
@@ -1922,7 +1862,7 @@ def buy_item():
     )
     try:
         item_id = int(
-            (body() or {}).get(
+            (request.json or {}).get(
                 'item_id'
             )
         )
@@ -1973,7 +1913,7 @@ def activate_item():
     )
     try:
         item_id = int(
-            (body() or {}).get(
+            (request.json or {}).get(
                 'item_id'
             )
         )
@@ -1995,10 +1935,13 @@ def activate_item():
         return json_error(
             'У тебя нет этого предмета.'
         )
-    database.extend_booster(
-        uid,
-        item_id,
-        600
+    active[
+        (
+            uid,
+            item_id
+        )
+    ] = (
+        time.time() + 600
     )
     return jsonify(
         ok=True,
@@ -2050,44 +1993,70 @@ def leaderboard():
     uid = int(
         u['id']
     )
-    players = [
-        dict(player)
-        for player in database.get_all_players()
-        if not int(
-            player['blocked']
+    players = database.get_top_players(
+        10
+    )
+    result = []
+    for player in players:
+        player = dict(
+            player
         )
+        player['avatar'] = (
+            database.get_avatar(
+                player['user_id']
+            )
+        )
+        result.append(
+            player
+        )
+    all_players = database.get_all_players()
+    all_players = [
+        dict(player)
+        for player in all_players
     ]
+    all_players.sort(
+        key=lambda player: (
+            int(
+                player.get(
+                    'egg_coins',
+                    0
+                )
+            ),
+            int(
+                player.get(
+                    'tap_coins',
+                    0
+                )
+            )
+        ),
+        reverse=True
+    )
     my_rank = None
     for position, player in enumerate(
-        players,
+        all_players,
         start=1
     ):
         if int(
-            player['user_id']
+            player.get(
+                'user_id',
+                0
+            )
         ) == uid:
             my_rank = position
             break
-    result = [
-        {
-            'user_id': int(player['user_id']),
-            'username': player['username'] or '',
-            'avatar': player['avatar'] or '🥚',
-            'level': int(player['level']),
-            'egg_coins': int(player['egg_coins'])
-        }
-        for player in players[:10]
-    ]
     return jsonify(
         ok=True,
-        players=result,
-        my_rank=my_rank
+        players=
+            result,
+        my_rank=
+            my_rank
     )
 # =========================================================
 # SET AVATAR
 # =========================================================
 def save_avatar_for_user(uid):
     avatar = str(
-        (body() or {}).get(
+        (request.json or {}).get(
             'avatar',
             ''
         )
@@ -2292,7 +2261,7 @@ def claim():
         u['id']
     )
     task_id = (
-        body() or {}
+        request.json or {}
     ).get(
         'task_id'
     )
@@ -2461,7 +2430,7 @@ def api_chest_buy():
     )
     try:
         chest_id = int(
-            (body() or {}).get(
+            (request.json or {}).get(
                 'chest_id'
             )
         )
@@ -2525,7 +2494,7 @@ def api_chest_open():
     )
     try:
         chest_id = int(
-            (body() or {}).get(
+            (request.json or {}).get(
                 'chest_id'
             )
         )
@@ -2571,38 +2540,24 @@ def api_chest_open():
                 0.5
             ]
         )[0]
-        added, auto_active = database.grant_pet(
+        database.add_pet(
             uid,
             pet_id
         )
-        if added:
-            result = {
-                'type': 'pet',
-                'auto_activated': auto_active,
-                'pet': {
-                    'id': pet_id,
-                    'name': PETS[pet_id][0],
-                    'rarity': PETS[pet_id][1],
-                    'bonus': PETS[pet_id][2]
-                }
+        result = {
+            'type':
+                'pet',
+            'pet': {
+                'id':
+                    pet_id,
+                'name':
+                    PETS[pet_id][0],
+                'rarity':
+                    PETS[pet_id][1],
+                'bonus':
+                    PETS[pet_id][2]
             }
-        else:
-            # Такой питомец уже есть - не даём награде пропасть.
-            amount = 300 * pet_id
-            database.add_egg_coins(
-                uid,
-                amount
-            )
-            result = {
-                'type': 'pet_duplicate',
-                'amount': amount,
-                'pet': {
-                    'id': pet_id,
-                    'name': PETS[pet_id][0],
-                    'rarity': PETS[pet_id][1],
-                    'bonus': PETS[pet_id][2]
-                }
-            }
+        }
     # =====================================================
     # EGG
     # =====================================================
@@ -2714,33 +2669,51 @@ def api_pets():
     uid = int(
         u['id']
     )
+    rows = database.get_player_pets(
+        uid
+    )
     owned = {}
-    for row in database.get_player_pets(uid):
-        owned[int(row['pet_id'])] = bool(
-            row['active']
+    for row in rows:
+        row = dict(
+            row
         )
-    pets = {}
-    active_pet = None
-    for i, pet in PETS.items():
-        info = {
-            'id': i,
-            'name': pet[0],
-            'rarity': pet[1],
-            'bonus': pet[2],
-            'bonus_percent': int(
-                round(PET_BONUS.get(pet[1], 0) * 100)
-            ),
-            'owned': i in owned,
-            'active': owned.get(i, False)
-        }
-        pets[str(i)] = info
-        if info['active']:
-            active_pet = info
+        pet_id = int(
+            row.get(
+                'pet_id',
+                0
+            )
+        )
+        owned[pet_id] = int(
+            row.get(
+                'active',
+                0
+            )
+        )
     return jsonify(
         ok=True,
-        pets=pets,
-        active_pet=active_pet,
-        how_to_get='Питомцев можно получить из 🌌 Божественного сундука.'
+        pets={
+            str(i): {
+                'id':
+                    i,
+                'name':
+                    pet[0],
+                'rarity':
+                    pet[1],
+                'bonus':
+                    pet[2],
+                'owned':
+                    i in owned,
+                'active':
+                    bool(
+                        owned.get(
+                            i,
+                            0
+                        )
+                    )
+            }
+            for i, pet
+            in PETS.items()
+        }
     )
 # =========================================================
 # ACTIVATE PET
@@ -2755,7 +2728,7 @@ def api_pet_activate():
     )
     try:
         pet_id = int(
-            (body() or {}).get(
+            (request.json or {}).get(
                 'pet_id'
             )
         )
@@ -2893,7 +2866,7 @@ def api_market_list():
     uid = int(
         u['id']
     )
-    data = body() or {}
+    data = request.json or {}
     try:
         egg_id = int(
             data.get(
@@ -2952,7 +2925,7 @@ def api_market_buy():
     )
     try:
         listing_id = int(
-            (body() or {}).get(
+            (request.json or {}).get(
                 'listing_id'
             )
         )
@@ -3024,7 +2997,7 @@ def api_market_cancel():
     )
     try:
         listing_id = int(
-            (body() or {}).get(
+            (request.json or {}).get(
                 'listing_id'
             )
         )
@@ -3057,91 +3030,19 @@ def api_market_cancel():
 # =========================================================
 # BOSS
 # =========================================================
-def boss_is_finished(boss, now=None):
-    now = int(now or time.time())
-    return (
-        int(boss['current_hp']) <= 0
-        or int(boss['ends_at']) <= now
-        or int(boss['active']) == 0
-    )
-def boss_reward_amount(damage):
-    return min(
-        500,
-        max(
-            50,
-            int(damage) // 2
-        )
-    )
 def get_boss():
-    """
-    Возвращает текущего босса. Когда босс побеждён или время
-    вышло и окно получения наград (BOSS_CLAIM_WINDOW) прошло -
-    автоматически запускается следующий.
-    """
-    with BOSS_LOCK:
+    boss = database.get_boss_event()
+    if not boss:
+        database.start_boss_event(
+            'Король Яиц',
+            BOSS_MAX_HP,
+            BOSS_DURATION
+        )
         boss = database.get_boss_event()
-        now = int(time.time())
-        if not boss:
-            database.start_boss_event(
-                BOSS_NAMES[0],
-                BOSS_MAX_HP,
-                BOSS_DURATION
-            )
-            return database.get_boss_event()
-        if (
-            boss_is_finished(boss, now)
-            and now >= int(boss['ends_at']) + BOSS_CLAIM_WINDOW
-        ):
-            others = [
-                name for name in BOSS_NAMES
-                if name != boss['boss_name']
-            ] or BOSS_NAMES
-            database.start_boss_event(
-                random.choice(others),
-                BOSS_MAX_HP,
-                BOSS_DURATION
-            )
-            boss = database.get_boss_event()
-        return boss
-def boss_payload(uid, boss):
-    now = int(time.time())
-    finished = boss_is_finished(boss, now)
-    hp = max(0, int(boss['current_hp']))
-    my_damage = 0
-    my_claimed = False
-    board = []
-    for row in database.get_boss_participants():
-        row = dict(row)
-        damage = int(row['damage'])
-        if int(row['user_id']) == uid:
-            my_damage = damage
-            my_claimed = bool(row['reward_claimed'])
-        if len(board) < 10:
-            board.append({
-                'name': row.get('username') or 'Игрок',
-                'damage': damage,
-                'me': int(row['user_id']) == uid
-            })
-    return {
-        'name': boss['boss_name'],
-        'hp': hp,
-        'max_hp': int(boss['max_hp']),
-        'ends_at': int(boss['ends_at']),
-        'seconds_left': max(0, int(boss['ends_at']) - now),
-        'finished': finished,
-        'defeated': hp <= 0,
-        'my_damage': my_damage,
-        'reward_amount': boss_reward_amount(my_damage) if my_damage > 0 else 0,
-        'reward_claimed': my_claimed,
-        'reward_available': (
-            finished and my_damage > 0 and not my_claimed
-        ),
-        'next_boss_in': (
-            max(0, int(boss['ends_at']) + BOSS_CLAIM_WINDOW - now)
-            if finished else 0
-        ),
-        'leaderboard': board
-    }
+    return boss
+# =========================================================
+# BOSS INFO
+# =========================================================
 @app.get('/api/boss')
 def api_boss():
     u, f = auth()
@@ -3151,10 +3052,44 @@ def api_boss():
         u['id']
     )
     boss = get_boss()
+    participants = (
+        database.get_boss_participants()
+    )
+    leaderboard = []
+    for row in participants:
+        row = dict(
+            row
+        )
+        leaderboard.append({
+            'user_id':
+                row['user_id'],
+            'damage':
+                row['damage']
+        })
     return jsonify(
         ok=True,
-        **boss_payload(uid, boss)
+        hp=
+            int(
+                boss['current_hp']
+            ),
+        max_hp=
+            int(
+                boss['max_hp']
+            ),
+        ends_at=
+            boss['ends_at'],
+        my_damage=
+            int(
+                database.get_boss_damage(
+                    uid
+                )
+            ),
+        leaderboard=
+            leaderboard[:10]
     )
+# =========================================================
+# BOSS ATTACK
+# =========================================================
 @app.post('/api/boss/attack')
 def api_boss_attack():
     u, f = auth()
@@ -3164,56 +3099,106 @@ def api_boss_attack():
         u['id']
     )
     now = time.time()
-    if now - last_boss.get(uid, 0) < 0.7:
+    if (
+        now - last_boss.get(
+            uid,
+            0
+        )
+        < 0.7
+    ):
         return json_error(
             'Подожди немного.',
             429
         )
     boss = get_boss()
-    if int(boss['current_hp']) <= 0:
+    if int(
+        boss['current_hp']
+    ) <= 0:
         return json_error(
             'Босс уже побеждён.'
         )
-    if boss_is_finished(boss, now):
+    if (
+        int(
+            boss['ends_at']
+        )
+        <= int(now)
+    ):
         return json_error(
             'Событие босса завершено.'
         )
     last_boss[uid] = now
-    actual_damage = int(
+    damage = random.randint(
+        20,
+        60
+    )
+    damage = min(
+        damage,
+        int(
+            boss['current_hp']
+        )
+    )
+    if damage <= 0:
+        return json_error(
+            'Босс уже побеждён.'
+        )
+    actual_damage = (
         database.damage_boss(
             uid,
-            random.randint(20, 60)
-        ) or 0
+            damage
+        )
     )
     if not actual_damage:
         return json_error(
             'Не удалось нанести урон.'
         )
-    boss = database.get_boss_event()
-    hp = max(
-        0,
-        int(boss['current_hp'])
+    actual_damage = int(
+        actual_damage
     )
     add_pass_xp(
         uid,
-        max(1, actual_damage // 5)
+        max(
+            1,
+            actual_damage // 5
+        )
     )
     add_xp(
         uid,
-        max(1, actual_damage // 5)
+        max(
+            1,
+            actual_damage // 5
+        )
     )
     return jsonify(
         ok=True,
-        damage=actual_damage,
-        hp=hp,
-        max_hp=int(boss['max_hp']),
-        defeated=hp <= 0,
-        my_damage=int(
-            database.get_boss_damage(uid)
+        damage=
+            actual_damage,
+        hp=
+            max(
+                0,
+                int(
+                    boss['current_hp']
+                )
+                - actual_damage
+            ),
+        max_hp=
+            int(
+                boss['max_hp']
+            ),
+        defeated=(
+            int(
+                boss['current_hp']
+            )
+            - actual_damage
+            <= 0
         ),
-        data=snap(uid),
-        new_achievements=achievements(uid)
+        data=
+            snap(uid),
+        new_achievements=
+            achievements(uid)
     )
+# =========================================================
+# BOSS REWARD
+# =========================================================
 @app.post('/api/boss/reward')
 def api_boss_reward():
     u, f = auth()
@@ -3222,7 +3207,6 @@ def api_boss_reward():
     uid = int(
         u['id']
     )
-    get_boss()
     result = database.claim_boss_reward(
         uid
     )
@@ -3231,10 +3215,17 @@ def api_boss_reward():
             'Награда недоступна.'
         )
     damage = int(
-        result.get('damage', 0)
+        result.get(
+            'damage',
+            0
+        )
     )
-    reward = boss_reward_amount(
-        damage
+    reward = min(
+        500,
+        max(
+            50,
+            damage // 2
+        )
     )
     database.add_egg_coins(
         uid,
@@ -3246,9 +3237,12 @@ def api_boss_reward():
     )
     return jsonify(
         ok=True,
-        reward=reward,
-        damage=damage,
-        data=snap(uid)
+        reward=
+            reward,
+        damage=
+            damage,
+        data=
+            snap(uid)
     )
 # =========================================================
 # EGG PASS
@@ -3334,7 +3328,10 @@ def api_pass():
             xp,
         level=
             level,
-        premium=premium, premium_price=PREMIUM_PASS_PRICE, max_level=PASS_MAX,
+        premium=
+            premium,
+        max_level=
+            PASS_MAX,
         xp_per_level=
             PASS_XP,
         xp_in_level=
@@ -3356,7 +3353,7 @@ def api_pass_claim():
     uid = int(
         u['id']
     )
-    data = body() or {}
+    data = request.json or {}
     try:
         level = int(
             data.get(
@@ -3518,38 +3515,6 @@ def api_pass_claim_all():
             snap(uid)
     )
 # =========================================================
-# EGG PASS PREMIUM
-# =========================================================
-@app.post('/api/egg-pass/premium')
-def api_pass_premium():
-    u, f = auth()
-    if f:
-        return f
-    uid = int(
-        u['id']
-    )
-    if not PREMIUM_PASS_PRICE:
-        return json_error(
-            'Premium Egg Pass пока недоступен.'
-        )
-    status = database.buy_egg_pass_premium(
-        uid,
-        PREMIUM_PASS_PRICE
-    )
-    if status == 'already':
-        return json_error(
-            'Premium уже активен.'
-        )
-    if status == 'funds':
-        return json_error(
-            f'Недостаточно Egg Coins. '
-            f'Нужно {PREMIUM_PASS_PRICE} 🥚.'
-        )
-    return jsonify(
-        ok=True,
-        data=snap(uid)
-    )
-# =========================================================
 # STEAL PLAYERS
 # =========================================================
 @app.get('/api/steal/players')
@@ -3609,7 +3574,7 @@ def api_steal():
     uid = int(
         u['id']
     )
-    data = body() or {}
+    data = request.json or {}
     try:
         # Клиент шлёт victim_id, старая версия - target_id.
         target = int(
@@ -3760,25 +3725,833 @@ def api_steal():
             snap(uid)
     )
 # =========================================================
-# ADMIN BOT (панель управления)
+# NEW MINI-GAMES: SHARED
 # =========================================================
 #
-# Стартует при загрузке модуля, поэтому работает и с
-# `gunicorn server:app`, и с `python server.py`.
-# Нужны переменные ADMIN_BOT_TOKEN и ADMIN_IDS,
-# иначе бот просто не запускается.
+# Дневной лимит наград (в Egg Coins, до бонусов) на игру,
+# чтобы игры не обесценивали экономику.
 #
-try:
-    import admin_bot
-    admin_bot.configure(
-        EGGS,
-        CHESTS,
-        ITEMS,
-        PETS
+DAILY_CAPS = {
+    'shell': 60,
+    'memory': 60,
+    'duel': 40
+}
+def capped_reward(uid, game, amount):
+    """Выдаёт награду с учётом дневного лимита.
+
+    Возвращает (выдано, сколько ещё можно получить сегодня).
+    """
+    _, earned = database.game_daily_get(
+        uid,
+        game
     )
-    admin_bot.start_in_thread()
-except Exception as error:
-    print(f'[admin_bot] не запущен: {error}')
+    left = max(
+        0,
+        DAILY_CAPS.get(game, 0) - earned
+    )
+    give = min(
+        int(amount),
+        left
+    )
+    if give > 0:
+        add_game_coins(
+            uid,
+            give
+        )
+    database.game_daily_add(
+        uid,
+        game,
+        1,
+        give
+    )
+    return give, left - give
+def reward_left(uid, game):
+    _, earned = database.game_daily_get(
+        uid,
+        game
+    )
+    return max(
+        0,
+        DAILY_CAPS.get(game, 0) - earned
+    )
+def finish_bonus(uid, xp_amount):
+    add_pass_xp(
+        uid,
+        xp_amount
+    )
+    add_xp(
+        uid,
+        xp_amount
+    )
+    database.add_task_game(
+        uid
+    )
+def parse_index(value, size):
+    try:
+        index = int(value)
+    except (TypeError, ValueError):
+        return None
+    if not 0 <= index < size:
+        return None
+    return index
+# =========================================================
+# SHELL GAME (НАПЁРСТКИ)
+# =========================================================
+SHELL_CUPS = 3
+SHELL_WIN_REWARD = 6
+@app.post('/api/game/shell/start')
+def shell_start():
+    u, f = auth()
+    if f:
+        return f
+    uid = int(
+        u['id']
+    )
+    if not game_ok(uid):
+        return json_error(
+            'Подожди немного.',
+            429
+        )
+    database.session_set(
+        uid,
+        'shell',
+        {
+            'egg':
+                random.randrange(
+                    SHELL_CUPS
+                )
+        }
+    )
+    return jsonify(
+        ok=True,
+        cups=
+            SHELL_CUPS,
+        reward=
+            SHELL_WIN_REWARD,
+        left=
+            reward_left(uid, 'shell')
+    )
+@app.post('/api/game/shell/pick')
+def shell_pick():
+    u, f = auth()
+    if f:
+        return f
+    uid = int(
+        u['id']
+    )
+    game = database.session_get(
+        uid,
+        'shell'
+    )
+    if not game:
+        return json_error(
+            'Игра не запущена.'
+        )
+    index = parse_index(
+        (request.json or {}).get(
+            'index'
+        ),
+        SHELL_CUPS
+    )
+    if index is None:
+        return json_error(
+            'Неверный стакан.'
+        )
+    # Партию забирает только один запрос (защита от двойной награды)
+    if not database.session_pop(
+        uid,
+        'shell'
+    ):
+        return json_error(
+            'Игра уже завершена.'
+        )
+    egg = int(
+        game['egg']
+    )
+    if index == egg:
+        result = 'win'
+        reward, left = capped_reward(
+            uid,
+            'shell',
+            SHELL_WIN_REWARD
+        )
+        finish_bonus(
+            uid,
+            8
+        )
+    else:
+        result = 'lose'
+        reward = 0
+        left = reward_left(
+            uid,
+            'shell'
+        )
+        database.game_daily_add(
+            uid,
+            'shell',
+            1,
+            0
+        )
+        finish_bonus(
+            uid,
+            3
+        )
+    return jsonify(
+        ok=True,
+        result=
+            result,
+        egg=
+            egg,
+        reward=
+            reward,
+        left=
+            left,
+        data=
+            snap(uid),
+        new_achievements=
+            achievements(uid)
+    )
+# =========================================================
+# MEMORY GAME (НАЙДИ ПАРУ)
+# =========================================================
+MEMORY_SYMBOLS = [
+    '🐣',
+    '🥚',
+    '🐔',
+    '🦊',
+    '🐲',
+    '🦄'
+]
+def memory_reward(moves):
+    if moves <= 8:
+        return 8
+    if moves <= 11:
+        return 5
+    if moves <= 14:
+        return 3
+    return 1
+@app.post('/api/game/memory/start')
+def memory_start():
+    u, f = auth()
+    if f:
+        return f
+    uid = int(
+        u['id']
+    )
+    if not game_ok(uid):
+        return json_error(
+            'Подожди немного.',
+            429
+        )
+    cards = MEMORY_SYMBOLS * 2
+    random.shuffle(
+        cards
+    )
+    database.session_set(
+        uid,
+        'memory',
+        {
+            'cards':
+                cards,
+            'first':
+                None,
+            'matched':
+                [],
+            'moves':
+                0
+        }
+    )
+    return jsonify(
+        ok=True,
+        size=
+            len(cards),
+        left=
+            reward_left(uid, 'memory')
+    )
+@app.post('/api/game/memory/flip')
+def memory_flip():
+    u, f = auth()
+    if f:
+        return f
+    uid = int(
+        u['id']
+    )
+    game = database.session_get(
+        uid,
+        'memory'
+    )
+    if not game:
+        return json_error(
+            'Игра не запущена.'
+        )
+    cards = game['cards']
+    index = parse_index(
+        (request.json or {}).get(
+            'index'
+        ),
+        len(cards)
+    )
+    if index is None:
+        return json_error(
+            'Неверная карточка.'
+        )
+    if (
+        index in game['matched']
+        or index == game['first']
+    ):
+        return json_error(
+            'Карточка уже открыта.'
+        )
+    value = cards[index]
+    # Первая карточка хода
+    if game['first'] is None:
+        game['first'] = index
+        database.session_set(
+            uid,
+            'memory',
+            game
+        )
+        return jsonify(
+            ok=True,
+            phase=
+                'first',
+            value=
+                value,
+            moves=
+                game['moves']
+        )
+    # Вторая карточка хода
+    first = int(
+        game['first']
+    )
+    first_value = cards[first]
+    game['moves'] += 1
+    game['first'] = None
+    if first_value != value:
+        database.session_set(
+            uid,
+            'memory',
+            game
+        )
+        return jsonify(
+            ok=True,
+            phase=
+                'mismatch',
+            value=
+                value,
+            first_index=
+                first,
+            first_value=
+                first_value,
+            moves=
+                game['moves']
+        )
+    game['matched'] += [
+        first,
+        index
+    ]
+    if len(game['matched']) < len(cards):
+        database.session_set(
+            uid,
+            'memory',
+            game
+        )
+        return jsonify(
+            ok=True,
+            phase=
+                'match',
+            value=
+                value,
+            first_index=
+                first,
+            first_value=
+                first_value,
+            moves=
+                game['moves']
+        )
+    # Все пары найдены
+    if not database.session_pop(
+        uid,
+        'memory'
+    ):
+        return json_error(
+            'Игра уже завершена.'
+        )
+    reward, left = capped_reward(
+        uid,
+        'memory',
+        memory_reward(
+            game['moves']
+        )
+    )
+    finish_bonus(
+        uid,
+        15
+    )
+    return jsonify(
+        ok=True,
+        phase=
+            'win',
+        value=
+            value,
+        first_index=
+            first,
+        first_value=
+            first_value,
+        moves=
+            game['moves'],
+        reward=
+            reward,
+        left=
+            left,
+        data=
+            snap(uid),
+        new_achievements=
+            achievements(uid)
+    )
+# =========================================================
+# DAILY WHEEL (КОЛЕСО УДАЧИ)
+# =========================================================
+#
+# (id, название, вес, тип, количество)
+#
+WHEEL = [
+    (1, '🥚 +10 Egg Coins', 30, 'egg', 10),
+    (2, '🥚 +25 Egg Coins', 22, 'egg', 25),
+    (3, '🥚 +50 Egg Coins', 12, 'egg', 50),
+    (4, '🥚 +150 Egg Coins', 3, 'egg', 150),
+    (5, '👆 +200 Tap Coins', 15, 'tap', 200),
+    (6, '👆 +500 Tap Coins', 8, 'tap', 500),
+    (7, '⭐ +50 XP', 6, 'xp', 50),
+    (8, '⚡ Бустер тапов', 2, 'item', 1),
+    (9, '📦 Обычный сундук', 2, 'chest', 1)
+]
+def seconds_to_midnight():
+    now = datetime.now()
+    tomorrow = datetime.combine(
+        date.today() + timedelta(days=1),
+        datetime.min.time()
+    )
+    return max(
+        0,
+        int(
+            (tomorrow - now).total_seconds()
+        )
+    )
+@app.get('/api/wheel')
+def wheel_status():
+    u, f = auth()
+    if f:
+        return f
+    uid = int(
+        u['id']
+    )
+    plays, _ = database.game_daily_get(
+        uid,
+        'wheel'
+    )
+    return jsonify(
+        ok=True,
+        available=
+            plays == 0,
+        seconds_left=
+            seconds_to_midnight(),
+        prizes=[
+            {
+                'id': prize[0],
+                'label': prize[1]
+            }
+            for prize in WHEEL
+        ]
+    )
+@app.post('/api/wheel/spin')
+def wheel_spin():
+    u, f = auth()
+    if f:
+        return f
+    uid = int(
+        u['id']
+    )
+    # Атомарно: только один запрос в день получает приз
+    if not database.game_daily_claim_once(
+        uid,
+        'wheel'
+    ):
+        return json_error(
+            'Сегодня колесо уже крутили. Приходи завтра!'
+        )
+    prize = random.choices(
+        WHEEL,
+        weights=[
+            item[2]
+            for item in WHEEL
+        ],
+        k=1
+    )[0]
+    kind = prize[3]
+    amount = prize[4]
+    if kind == 'egg':
+        database.add_egg_coins(
+            uid,
+            amount
+        )
+    elif kind == 'tap':
+        database.add_tap_coins(
+            uid,
+            amount
+        )
+    elif kind == 'xp':
+        add_xp(
+            uid,
+            amount
+        )
+    elif kind == 'item':
+        database.add_item(
+            uid,
+            amount
+        )
+    elif kind == 'chest':
+        database.add_chest(
+            uid,
+            amount
+        )
+    add_pass_xp(
+        uid,
+        10
+    )
+    return jsonify(
+        ok=True,
+        prize={
+            'id': prize[0],
+            'label': prize[1]
+        },
+        index=
+            WHEEL.index(prize),
+        data=
+            snap(uid),
+        new_achievements=
+            achievements(uid)
+    )
+# =========================================================
+# DUEL (ДУЭЛЬ)
+# =========================================================
+#
+# Асинхронная дуэль «камень-ножницы-бумага»:
+# игрок оставляет вызов со скрытым ходом,
+# другой игрок принимает его своим ходом,
+# итог считается сразу. Награда - от игры (без ставок),
+# поэтому монеты между аккаунтами не переходят.
+#
+DUEL_MOVES = {
+    'rock': '🪨 Камень',
+    'scissors': '✂️ Ножницы',
+    'paper': '📄 Бумага'
+}
+DUEL_BEATS = {
+    'rock': 'scissors',
+    'scissors': 'paper',
+    'paper': 'rock'
+}
+DUEL_REWARD = {
+    'win': 8,
+    'draw': 3,
+    'lose': 1
+}
+def duel_outcome(mine, theirs):
+    """Итог с точки зрения игрока с ходом mine."""
+    if mine == theirs:
+        return 'draw'
+    if DUEL_BEATS[mine] == theirs:
+        return 'win'
+    return 'lose'
+def duel_result_for(duel, uid):
+    if int(duel['winner_id']) == 0:
+        return 'draw'
+    return (
+        'win'
+        if int(duel['winner_id']) == uid
+        else 'lose'
+    )
+@app.get('/api/duel')
+def duel_list():
+    u, f = auth()
+    if f:
+        return f
+    uid = int(
+        u['id']
+    )
+    now = int(
+        time.time()
+    )
+    open_list = [
+        {
+            'id':
+                int(row['id']),
+            'username':
+                row.get('username')
+                or 'Игрок',
+            'avatar':
+                row.get('avatar')
+                or '🥚',
+            'age':
+                max(
+                    0,
+                    now - int(
+                        row['created_at']
+                    )
+                )
+        }
+        for row in database.duel_open_list(
+            uid
+        )
+    ]
+    mine = []
+    unseen = 0
+    for duel in database.duel_mine(
+        uid
+    ):
+        item = {
+            'id':
+                int(duel['id']),
+            'status':
+                duel['status'],
+            'my_move':
+                DUEL_MOVES.get(
+                    duel['creator_move'],
+                    '?'
+                )
+        }
+        if duel['status'] == 'done':
+            item['opponent'] = (
+                duel.get('opponent_name')
+                or 'Игрок'
+            )
+            item['opponent_move'] = (
+                DUEL_MOVES.get(
+                    duel['opponent_move'],
+                    '?'
+                )
+            )
+            item['result'] = duel_result_for(
+                duel,
+                uid
+            )
+            item['reward'] = int(
+                duel['creator_reward']
+            )
+            item['seen'] = bool(
+                duel['creator_seen']
+            )
+            if not item['seen']:
+                unseen += 1
+        mine.append(
+            item
+        )
+    return jsonify(
+        ok=True,
+        open=
+            open_list,
+        mine=
+            mine,
+        unseen=
+            unseen,
+        moves=[
+            {
+                'id': key,
+                'label': label
+            }
+            for key, label
+            in DUEL_MOVES.items()
+        ],
+        left=
+            reward_left(uid, 'duel')
+    )
+@app.post('/api/duel/create')
+def duel_create_api():
+    u, f = auth()
+    if f:
+        return f
+    uid = int(
+        u['id']
+    )
+    move = (request.json or {}).get(
+        'move'
+    )
+    if move not in DUEL_MOVES:
+        return json_error(
+            'Неверный ход.'
+        )
+    duel_id = database.duel_create(
+        uid,
+        move
+    )
+    if duel_id is None:
+        return json_error(
+            'Можно держать не больше 3 открытых вызовов.'
+        )
+    return jsonify(
+        ok=True,
+        id=
+            duel_id
+    )
+@app.post('/api/duel/accept')
+def duel_accept():
+    u, f = auth()
+    if f:
+        return f
+    uid = int(
+        u['id']
+    )
+    data = request.json or {}
+    move = data.get(
+        'move'
+    )
+    if move not in DUEL_MOVES:
+        return json_error(
+            'Неверный ход.'
+        )
+    try:
+        duel_id = int(
+            data.get('id')
+        )
+    except (TypeError, ValueError):
+        return json_error(
+            'Неверный вызов.'
+        )
+    duel = database.duel_get(
+        duel_id
+    )
+    if (
+        not duel
+        or duel['status'] != 'open'
+    ):
+        return json_error(
+            'Этот вызов уже недоступен.'
+        )
+    creator = int(
+        duel['creator_id']
+    )
+    if creator == uid:
+        return json_error(
+            'Нельзя принять свой вызов.'
+        )
+    if (
+        int(time.time())
+        - int(duel['created_at'])
+        > 86400
+    ):
+        return json_error(
+            'Этот вызов устарел.'
+        )
+    outcome = duel_outcome(
+        move,
+        duel['creator_move']
+    )
+    if outcome == 'win':
+        winner = uid
+    elif outcome == 'lose':
+        winner = creator
+    else:
+        winner = 0
+    # Вызов закрывает только один игрок
+    if not database.duel_finish(
+        duel_id,
+        uid,
+        move,
+        winner,
+        0,
+        0
+    ):
+        return json_error(
+            'Этот вызов уже забрали.'
+        )
+    creator_outcome = duel_outcome(
+        duel['creator_move'],
+        move
+    )
+    my_reward, left = capped_reward(
+        uid,
+        'duel',
+        DUEL_REWARD[outcome]
+    )
+    finish_bonus(
+        uid,
+        10
+    )
+    creator_reward, _ = capped_reward(
+        creator,
+        'duel',
+        DUEL_REWARD[creator_outcome]
+    )
+    add_pass_xp(
+        creator,
+        10
+    )
+    add_xp(
+        creator,
+        10
+    )
+    database.duel_set_rewards(
+        duel_id,
+        creator_reward,
+        my_reward
+    )
+    return jsonify(
+        ok=True,
+        result=
+            outcome,
+        my_move=
+            DUEL_MOVES[move],
+        opponent_move=
+            DUEL_MOVES[
+                duel['creator_move']
+            ],
+        reward=
+            my_reward,
+        left=
+            left,
+        data=
+            snap(uid),
+        new_achievements=
+            achievements(uid)
+    )
+@app.post('/api/duel/cancel')
+def duel_cancel_api():
+    u, f = auth()
+    if f:
+        return f
+    uid = int(
+        u['id']
+    )
+    try:
+        duel_id = int(
+            (request.json or {}).get('id')
+        )
+    except (TypeError, ValueError):
+        return json_error(
+            'Неверный вызов.'
+        )
+    if not database.duel_cancel(
+        duel_id,
+        uid
+    ):
+        return json_error(
+            'Не удалось отменить вызов.'
+        )
+    return jsonify(
+        ok=True
+    )
+@app.post('/api/duel/seen')
+def duel_seen():
+    u, f = auth()
+    if f:
+        return f
+    database.duel_mark_seen(
+        int(u['id'])
+    )
+    return jsonify(
+        ok=True
+    )
 # =========================================================
 # START SERVER
 # =========================================================
