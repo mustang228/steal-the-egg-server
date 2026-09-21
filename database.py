@@ -2324,6 +2324,37 @@ def remove_pet(
         return cursor.rowcount > 0
     finally:
         conn.close()
+def grant_pet(
+    user_id,
+    pet_id
+):
+    """
+    Выдать питомца. Возвращает (добавлен, авто_активирован).
+    Если у игрока ещё нет активного питомца - новый
+    включается сразу.
+    """
+    added = add_pet(
+        user_id,
+        pet_id
+    )
+    if not added:
+        return False, False
+    if get_active_pet(
+        user_id
+    ):
+        return True, False
+    for row in get_player_pets(
+        user_id
+    ):
+        if int(
+            row['pet_id']
+        ) == int(pet_id):
+            set_active_pet(
+                user_id,
+                int(row['id'])
+            )
+            return True, True
+    return True, False
 # =========================================================
 # MARKET
 # =========================================================
