@@ -1,6 +1,6 @@
 import os
+import json
 import sqlite3
-import time
 from pathlib import Path
 from datetime import date, datetime, timedelta
 # =========================================================
@@ -22,40 +22,12 @@ DB_PATH.parent.mkdir(
 # =========================================================
 # CONNECTION
 # =========================================================
-def _enable_wal():
-    """
-    Режим WAL: читатели больше не блокируются писателями, а
-    писатели ждут друг друга в очереди. Это лечит ошибку
-    "database is locked" при нескольких одновременных запросах.
-    Настройка сохраняется в самом файле базы.
-    """
-    for _ in range(10):
-        try:
-            conn = sqlite3.connect(
-                DB_PATH,
-                timeout=30
-            )
-            try:
-                conn.execute(
-                    "PRAGMA journal_mode = WAL"
-                )
-            finally:
-                conn.close()
-            return
-        except sqlite3.OperationalError:
-            time.sleep(0.5)
 def get_connection():
     conn = sqlite3.connect(
         DB_PATH,
         timeout=30
     )
     conn.row_factory = sqlite3.Row
-    conn.execute(
-        "PRAGMA busy_timeout = 30000"
-    )
-    conn.execute(
-        "PRAGMA synchronous = NORMAL"
-    )
     conn.execute(
         "PRAGMA foreign_keys = ON"
     )
@@ -115,7 +87,6 @@ def _add_column(
 # DATABASE INITIALIZATION
 # =========================================================
 def init_database():
-    _enable_wal()
     conn = get_connection()
     try:
         # =================================================
@@ -451,50 +422,6 @@ def init_database():
                 claimed INTEGER NOT NULL DEFAULT 0
             )
             """
-        )
-        # =================================================
-        # PLAYER BOOSTERS (переживают перезапуск сервера)
-        # =================================================
-        conn.execute(
-            """
-            CREATE TABLE IF NOT EXISTS player_boosters (
-                user_id INTEGER NOT NULL,
-                item_id INTEGER NOT NULL,
-                until INTEGER NOT NULL,
-                PRIMARY KEY (
-                    user_id,
-                    item_id
-                )
-            )
-            """
-        )
-        # =================================================
-        # DAILY GAME REWARDS (дневной лимит наград за игры)
-        # =================================================
-        conn.execute(
-            """
-            CREATE TABLE IF NOT EXISTS daily_game_rewards (
-                user_id INTEGER NOT NULL,
-                reward_date TEXT NOT NULL,
-                amount INTEGER NOT NULL DEFAULT 0,
-                PRIMARY KEY (
-                    user_id,
-                    reward_date
-                )
-            )
-            """
-        )
-        conn.execute(
-            """
-            DELETE FROM daily_game_rewards
-            WHERE reward_date < ?
-            """,
-            (
-                (
-                    date.today()
-                    - timedelta(days=7)
-                ).isoformat(),
-            )
         )
         # =================================================
         # INDEXES
@@ -852,27 +779,25 @@ def ensure_player(
     user_id = int(
         user_id
     )
-    display_name = (
-        username
-        or first_name
-        or ''
-    )
     conn = get_connection()
     try:
         player = conn.execute(
             """
-            SELECT user_id, username
+            SELECT *
             FROM players
             WHERE user_id = ?
             """,
             (user_id,)
         ).fetchone()
-        # Пишем в базу только если реально что-то изменилось:
-        # раньше здесь была запись на КАЖДЫЙ запрос игры.
+        display_name = (
+            username
+            or first_name
+            or ''
+        )
         if not player:
             conn.execute(
                 """
-                INSERT OR IGNORE INTO players (
+                INSERT INTO players (
                     user_id,
                     username,
                     avatar
@@ -885,11 +810,7 @@ def ensure_player(
                     '🥚'
                 )
             )
-            conn.commit()
-        elif (
-            display_name
-            and player['username'] != display_name
-        ):
+        elif display_name:
             conn.execute(
                 """
                 UPDATE players
@@ -901,7 +822,7 @@ def ensure_player(
                     user_id
                 )
             )
-            conn.commit()
+        conn.commit()
     finally:
         conn.close()
     return get_player(
@@ -1730,21 +1651,6 @@ def clear_old_daily_quests(
     today = date.today().isoformat()
     conn = get_connection()
     try:
-        old = conn.execute(
-            """
-            SELECT 1
-            FROM daily_quests
-            WHERE user_id = ?
-              AND task_date != ?
-            LIMIT 1
-            """,
-            (
-                int(user_id),
-                today
-            )
-        ).fetchone()
-        if not old:
-            return
         conn.execute(
             """
             DELETE FROM daily_quests
@@ -2375,37 +2281,6 @@ def remove_pet(
         return cursor.rowcount > 0
     finally:
         conn.close()
-def grant_pet(
-    user_id,
-    pet_id
-):
-    """
-    Выдать питомца. Возвращает (добавлен, авто_активирован).
-    Если у игрока ещё нет активного питомца - новый
-    включается сразу.
-    """
-    added = add_pet(
-        user_id,
-        pet_id
-    )
-    if not added:
-        return False, False
-    if get_active_pet(
-        user_id
-    ):
-        return True, False
-    for row in get_player_pets(
-        user_id
-    ):
-        if int(
-            row['pet_id']
-        ) == int(pet_id):
-            set_active_pet(
-                user_id,
-                int(row['id'])
-            )
-            return True, True
-    return True, False
 # =========================================================
 # MARKET
 # =========================================================
@@ -3108,11 +2983,7 @@ def damage_boss(
             """
             UPDATE boss_event
             SET current_hp = ?,
-                active = ?,
-                ends_at = CASE
-                    WHEN ? <= 0 THEN ?
-                    ELSE ends_at
-                END
+                active = ?
             WHERE id = 1
               AND current_hp = ?
               AND active = 1
@@ -3120,8 +2991,6 @@ def damage_boss(
             (
                 new_hp,
                 0 if new_hp <= 0 else 1,
-                new_hp,
-                now,
                 current_hp
             )
         )
@@ -3337,16 +3206,6 @@ def ensure_egg_pass(
 ):
     conn = get_connection()
     try:
-        exists = conn.execute(
-            """
-            SELECT 1
-            FROM egg_pass
-            WHERE user_id = ?
-            """,
-            (int(user_id),)
-        ).fetchone()
-        if exists:
-            return
         conn.execute(
             """
             INSERT OR IGNORE INTO egg_pass (
@@ -3675,227 +3534,403 @@ def get_player_rank(
             return position
     return None
 # =========================================================
-# BOOSTERS
+# NEW MINI-GAMES: TABLES
 # =========================================================
-def get_booster_until(
-    user_id,
-    item_id
-):
+def init_game_tables():
     conn = get_connection()
     try:
-        row = conn.execute(
-            """
-            SELECT until
-            FROM player_boosters
-            WHERE user_id = ?
-              AND item_id = ?
-            """,
-            (
-                int(user_id),
-                int(item_id)
-            )
-        ).fetchone()
-        if not row:
-            return 0
-        return int(
-            row['until']
-        )
-    finally:
-        conn.close()
-def get_active_boosters(
-    user_id
-):
-    """{item_id: unix_time_окончания} только для активных."""
-    now = int(
-        datetime.now().timestamp()
-    )
-    conn = get_connection()
-    try:
-        rows = conn.execute(
-            """
-            SELECT item_id, until
-            FROM player_boosters
-            WHERE user_id = ?
-              AND until > ?
-            """,
-            (
-                int(user_id),
-                now
-            )
-        ).fetchall()
-        return {
-            int(row['item_id']):
-                int(row['until'])
-            for row in rows
-        }
-    finally:
-        conn.close()
-def extend_booster(
-    user_id,
-    item_id,
-    seconds
-):
-    """Активирует бустер. Если уже активен - время суммируется."""
-    now = int(
-        datetime.now().timestamp()
-    )
-    conn = get_connection()
-    try:
-        row = conn.execute(
-            """
-            SELECT until
-            FROM player_boosters
-            WHERE user_id = ?
-              AND item_id = ?
-            """,
-            (
-                int(user_id),
-                int(item_id)
-            )
-        ).fetchone()
-        base = now
-        if row:
-            base = max(
-                now,
-                int(row['until'])
-            )
-        until = base + int(seconds)
+        # Дневные лимиты / счётчики игр (колесо, награды игр)
         conn.execute(
             """
-            INSERT INTO player_boosters (
-                user_id,
-                item_id,
-                until
+            CREATE TABLE IF NOT EXISTS game_daily (
+                user_id INTEGER NOT NULL,
+                game TEXT NOT NULL,
+                day TEXT NOT NULL,
+                plays INTEGER NOT NULL DEFAULT 0,
+                coins INTEGER NOT NULL DEFAULT 0,
+                PRIMARY KEY (user_id, game, day)
             )
-            VALUES (?, ?, ?)
-            ON CONFLICT(user_id, item_id)
+            """
+        )
+        # Незавершённые партии (переживают перезапуск сервера)
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS game_sessions (
+                user_id INTEGER NOT NULL,
+                game TEXT NOT NULL,
+                state TEXT NOT NULL,
+                created_at INTEGER NOT NULL,
+                PRIMARY KEY (user_id, game)
+            )
+            """
+        )
+        # Дуэли между игроками
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS duels (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                creator_id INTEGER NOT NULL,
+                creator_move TEXT NOT NULL,
+                opponent_id INTEGER,
+                opponent_move TEXT,
+                status TEXT NOT NULL DEFAULT 'open',
+                winner_id INTEGER NOT NULL DEFAULT 0,
+                creator_reward INTEGER NOT NULL DEFAULT 0,
+                opponent_reward INTEGER NOT NULL DEFAULT 0,
+                creator_seen INTEGER NOT NULL DEFAULT 0,
+                created_at INTEGER NOT NULL,
+                resolved_at INTEGER
+            )
+            """
+        )
+        conn.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_duels_status
+            ON duels(status, created_at)
+            """
+        )
+        conn.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_duels_creator
+            ON duels(creator_id)
+            """
+        )
+        conn.commit()
+    finally:
+        conn.close()
+# =========================================================
+# GAME SESSIONS
+# =========================================================
+def session_set(user_id, game, state):
+    conn = get_connection()
+    try:
+        conn.execute(
+            """
+            INSERT INTO game_sessions (
+                user_id, game, state, created_at
+            )
+            VALUES (?, ?, ?, ?)
+            ON CONFLICT(user_id, game)
             DO UPDATE SET
-                until = excluded.until
+                state = excluded.state,
+                created_at = excluded.created_at
             """,
             (
                 int(user_id),
-                int(item_id),
-                until
+                str(game),
+                json.dumps(state),
+                int(datetime.now().timestamp())
             )
         )
         conn.commit()
-        return until
     finally:
         conn.close()
-# =========================================================
-# DAILY GAME REWARD LIMIT
-# =========================================================
-def get_game_reward_today(
-    user_id
-):
+def session_get(user_id, game):
     conn = get_connection()
     try:
         row = conn.execute(
             """
-            SELECT amount
-            FROM daily_game_rewards
-            WHERE user_id = ?
-              AND reward_date = ?
+            SELECT state
+            FROM game_sessions
+            WHERE user_id = ? AND game = ?
+            """,
+            (int(user_id), str(game))
+        ).fetchone()
+        if not row:
+            return None
+        try:
+            return json.loads(row['state'])
+        except (TypeError, ValueError):
+            return None
+    finally:
+        conn.close()
+def session_pop(user_id, game):
+    """Удаляет партию. True, если именно этот вызов её забрал."""
+    conn = get_connection()
+    try:
+        cursor = conn.execute(
+            """
+            DELETE FROM game_sessions
+            WHERE user_id = ? AND game = ?
+            """,
+            (int(user_id), str(game))
+        )
+        conn.commit()
+        return cursor.rowcount == 1
+    finally:
+        conn.close()
+# =========================================================
+# GAME DAILY COUNTERS
+# =========================================================
+def game_daily_get(user_id, game):
+    conn = get_connection()
+    try:
+        row = conn.execute(
+            """
+            SELECT plays, coins
+            FROM game_daily
+            WHERE user_id = ? AND game = ? AND day = ?
             """,
             (
                 int(user_id),
+                str(game),
                 date.today().isoformat()
             )
         ).fetchone()
         if not row:
-            return 0
-        return int(
-            row['amount']
-        )
+            return 0, 0
+        return int(row['plays']), int(row['coins'])
     finally:
         conn.close()
-def add_game_reward_today(
-    user_id,
-    amount
-):
+def game_daily_add(user_id, game, plays=1, coins=0):
     conn = get_connection()
     try:
         conn.execute(
             """
-            INSERT INTO daily_game_rewards (
-                user_id,
-                reward_date,
-                amount
+            INSERT INTO game_daily (
+                user_id, game, day, plays, coins
             )
-            VALUES (?, ?, ?)
-            ON CONFLICT(user_id, reward_date)
+            VALUES (?, ?, ?, ?, ?)
+            ON CONFLICT(user_id, game, day)
             DO UPDATE SET
-                amount =
-                    daily_game_rewards.amount
-                    + excluded.amount
+                plays = plays + excluded.plays,
+                coins = coins + excluded.coins
             """,
             (
                 int(user_id),
+                str(game),
                 date.today().isoformat(),
-                int(amount)
+                int(plays),
+                int(coins)
             )
         )
         conn.commit()
     finally:
         conn.close()
-# =========================================================
-# EGG PASS PREMIUM (атомарная покупка)
-# =========================================================
-def buy_egg_pass_premium(
-    user_id,
-    price
-):
+def game_daily_claim_once(user_id, game):
+    """True, если сегодня это действие ещё не выполнялось.
+
+    Атомарно: второй одновременный запрос получит False.
     """
-    Возвращает 'ok', 'already' или 'funds'.
-    Списание Egg Coins и включение Premium - одной транзакцией.
-    """
-    ensure_egg_pass(
-        user_id
-    )
-    price = int(
-        price
-    )
     conn = get_connection()
     try:
         cursor = conn.execute(
             """
-            UPDATE egg_pass
-            SET premium = 1
-            WHERE user_id = ?
-              AND premium = 0
+            INSERT OR IGNORE INTO game_daily (
+                user_id, game, day, plays, coins
+            )
+            VALUES (?, ?, ?, 1, 0)
             """,
             (
                 int(user_id),
+                str(game),
+                date.today().isoformat()
             )
         )
-        if cursor.rowcount <= 0:
-            conn.rollback()
-            return 'already'
+        conn.commit()
+        return cursor.rowcount == 1
+    finally:
+        conn.close()
+# =========================================================
+# DUELS
+# =========================================================
+DUEL_TTL = 86400
+def _duel_now():
+    return int(datetime.now().timestamp())
+def duel_create(creator_id, move, max_open=3):
+    now = _duel_now()
+    conn = get_connection()
+    try:
+        conn.execute(
+            """
+            UPDATE duels
+            SET status = 'expired'
+            WHERE status = 'open' AND created_at < ?
+            """,
+            (now - DUEL_TTL,)
+        )
+        row = conn.execute(
+            """
+            SELECT COUNT(*) AS c
+            FROM duels
+            WHERE creator_id = ? AND status = 'open'
+            """,
+            (int(creator_id),)
+        ).fetchone()
+        if int(row['c']) >= max_open:
+            conn.commit()
+            return None
         cursor = conn.execute(
             """
-            UPDATE players
-            SET egg_coins =
-                egg_coins - ?
-            WHERE user_id = ?
-              AND egg_coins >= ?
+            INSERT INTO duels (
+                creator_id, creator_move, created_at
+            )
+            VALUES (?, ?, ?)
+            """,
+            (int(creator_id), str(move), now)
+        )
+        conn.commit()
+        return int(cursor.lastrowid)
+    finally:
+        conn.close()
+def duel_open_list(exclude_id, limit=20):
+    now = _duel_now()
+    conn = get_connection()
+    try:
+        rows = conn.execute(
+            """
+            SELECT d.id AS id,
+                   d.creator_id AS creator_id,
+                   d.created_at AS created_at,
+                   p.username AS username,
+                   p.avatar AS avatar
+            FROM duels d
+            JOIN players p ON p.user_id = d.creator_id
+            WHERE d.status = 'open'
+              AND d.creator_id != ?
+              AND d.created_at >= ?
+              AND p.blocked = 0
+            ORDER BY d.id DESC
+            LIMIT ?
             """,
             (
-                price,
-                int(user_id),
-                price
+                int(exclude_id),
+                now - DUEL_TTL,
+                int(limit)
+            )
+        ).fetchall()
+        return [dict(r) for r in rows]
+    finally:
+        conn.close()
+def duel_get(duel_id):
+    conn = get_connection()
+    try:
+        row = conn.execute(
+            "SELECT * FROM duels WHERE id = ?",
+            (int(duel_id),)
+        ).fetchone()
+        return dict(row) if row else None
+    finally:
+        conn.close()
+def duel_finish(
+    duel_id,
+    opponent_id,
+    opponent_move,
+    winner_id,
+    creator_reward,
+    opponent_reward
+):
+    """Атомарно закрывает открытую дуэль. False, если её уже забрали."""
+    conn = get_connection()
+    try:
+        cursor = conn.execute(
+            """
+            UPDATE duels
+            SET status = 'done',
+                opponent_id = ?,
+                opponent_move = ?,
+                winner_id = ?,
+                creator_reward = ?,
+                opponent_reward = ?,
+                resolved_at = ?
+            WHERE id = ?
+              AND status = 'open'
+              AND creator_id != ?
+              AND created_at >= ?
+            """,
+            (
+                int(opponent_id),
+                str(opponent_move),
+                int(winner_id),
+                int(creator_reward),
+                int(opponent_reward),
+                _duel_now(),
+                int(duel_id),
+                int(opponent_id),
+                _duel_now() - DUEL_TTL
             )
         )
-        if cursor.rowcount <= 0:
-            conn.rollback()
-            return 'funds'
         conn.commit()
-        return 'ok'
-    except Exception:
-        conn.rollback()
-        raise
+        return cursor.rowcount == 1
+    finally:
+        conn.close()
+def duel_set_rewards(duel_id, creator_reward, opponent_reward):
+    conn = get_connection()
+    try:
+        conn.execute(
+            """
+            UPDATE duels
+            SET creator_reward = ?,
+                opponent_reward = ?
+            WHERE id = ?
+            """,
+            (
+                int(creator_reward),
+                int(opponent_reward),
+                int(duel_id)
+            )
+        )
+        conn.commit()
+    finally:
+        conn.close()
+def duel_cancel(duel_id, creator_id):
+    conn = get_connection()
+    try:
+        cursor = conn.execute(
+            """
+            UPDATE duels
+            SET status = 'cancelled'
+            WHERE id = ?
+              AND creator_id = ?
+              AND status = 'open'
+            """,
+            (int(duel_id), int(creator_id))
+        )
+        conn.commit()
+        return cursor.rowcount == 1
+    finally:
+        conn.close()
+def duel_mine(user_id, limit=10):
+    """Свои открытые вызовы и недавние результаты (я создатель)."""
+    now = _duel_now()
+    conn = get_connection()
+    try:
+        rows = conn.execute(
+            """
+            SELECT d.*,
+                   p.username AS opponent_name,
+                   p.avatar AS opponent_avatar
+            FROM duels d
+            LEFT JOIN players p ON p.user_id = d.opponent_id
+            WHERE d.creator_id = ?
+              AND (
+                    (d.status = 'open' AND d.created_at >= ?)
+                    OR d.status = 'done'
+                  )
+            ORDER BY d.id DESC
+            LIMIT ?
+            """,
+            (int(user_id), now - DUEL_TTL, int(limit))
+        ).fetchall()
+        return [dict(r) for r in rows]
+    finally:
+        conn.close()
+def duel_mark_seen(user_id):
+    conn = get_connection()
+    try:
+        conn.execute(
+            """
+            UPDATE duels
+            SET creator_seen = 1
+            WHERE creator_id = ? AND status = 'done'
+            """,
+            (int(user_id),)
+        )
+        conn.commit()
     finally:
         conn.close()
 # =========================================================
 # START DATABASE
 # =========================================================
 init_database()
+init_game_tables()
